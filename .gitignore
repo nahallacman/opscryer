@@ -1,0 +1,10 @@
+# Never commit secret keys, .env files, or local runtime caches
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+__pycache__/
+*.pyc
+dist/
+scratch/
