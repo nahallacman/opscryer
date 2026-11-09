@@ -1,0 +1,77 @@
+# SPDX-License-Identifier: Apache-2.0
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "opscryer"
+version = "1.2.0"
+description = "OpsCryer spatial graph operations suite"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "Apache-2.0"}
+dependencies = []
+
+[project.scripts]
+opscryer = "opscryer_cli:main"
+opscryer-browser = "opscryer_browser:main"
+opscryer-hub = "opscryer_suite_hub:main"
+
+[tool.setuptools]
+packages = ["opscryer"]
+py-modules = [
+    "action_cards",
+    "capacity_planner",
+    "chaos_blast_radius",
+    "chat_walkthrough",
+    "cluster_diff_engine",
+    "cluster_harvester",
+    "demo_rehearsal",
+    "dogfood_graph",
+    "environment_adapters",
+    "executive_command_center",
+    "game_observability_loop",
+    "gameday_simulator",
+    "gitops_release_cockpit",
+    "golden_path_gates",
+    "gpu_and_household_triage",
+    "http_transport",
+    "incident_commander",
+    "jev_client",
+    "jev_knowledge_explorer",
+    "live_advisor",
+    "live_currencies",
+    "live_e2e_runner",
+    "live_gitops_signals",
+    "live_metrics_poller",
+    "live_ollama_probe",
+    "live_poller",
+    "live_watch_daemon",
+    "metrics_exporter",
+    "model_tier_copilot",
+    "network_topology_inspector",
+    "noc_golden_signals",
+    "oidc_and_openbao_inspector",
+    "oidc_rbac_verifier",
+    "openapi_spec",
+    "openbao_kms_provenance",
+    "opscryer_backend",
+    "opscryer_browser",
+    "opscryer_cli",
+    "opscryer_config",
+    "opscryer_showcase",
+    "opscryer_suite_hub",
+    "oscal_compliance",
+    "platform_compat",
+    "playbook_studio",
+    "pqc_security",
+    "prometheus_loki_adapter",
+    "route_registry",
+    "secops_vulnerability_cockpit",
+    "security_airlock",
+    "storage_zfs_cockpit",
+    "system_context",
+    "telemetry_sanitizer",
+    "ticket_chat_portal",
+    "webhook_notifier",
+]
