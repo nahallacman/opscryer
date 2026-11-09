@@ -1,0 +1,26 @@
+{
+  "contextFileName": [
+    "GEMINI.md",
+    "AGENTS.md"
+  ],
+  "tools": {
+    "allowed": [
+      "run_shell_command(python import_work_suite.py)",
+      "run_shell_command(python opscryer_abstraction.py)",
+      "run_shell_command(python opscryer_browser.py)",
+      "run_shell_command(python tools/opscryer/opscryer_abstraction.py)",
+      "run_shell_command(python tools/opscryer/opscryer_browser.py)",
+      "run_shell_command(python -m unittest)",
+      "run_shell_command(pytest)",
+      "run_shell_command(git status)",
+      "run_shell_command(git diff)",
+      "run_shell_command(git log)",
+      "run_shell_command(git branch)",
+      "run_shell_command(kubectl get)",
+      "run_shell_command(kubectl describe)",
+      "run_shell_command(kubectl logs)",
+      "run_shell_command(kubectl top)",
+      "run_shell_command(helm lint)"
+    ]
+  }
+}
