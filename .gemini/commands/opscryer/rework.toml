@@ -1,0 +1,7 @@
+description = "Run Tool 3 (The Swarm) to stage a 6-gate validated Jev graph expansion or playbook rework"
+prompt = """
+The following symptom or playbook requires Swarm AI fallback expansion or rework:
+Target: {{args}}
+
+Use `opscryer_abstraction.py` (`SwarmAIGraphAndPlaybookPipeline`) to synthesize and validate a 6-gate proposal.
+"""

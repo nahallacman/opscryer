@@ -1,0 +1,5549 @@
+{
+  "schema_version": "1.0-separable-spatial-graph-contract",
+  "root_id": "cluster-home",
+  "source": "offline_fallback",
+  "example": true,
+  "errors": [
+    "live_not_requested"
+  ],
+  "nodes": [
+    {
+      "id": "cluster-home",
+      "label": "Home Kubernetes Cluster",
+      "kind": "company_root",
+      "domain": "company_org",
+      "summary": "Home Kubernetes Cluster",
+      "primary_url": "https://kubernetes.cluster.example.org",
+      "drilldown_children": [
+        "k8s/Namespace//ai-infra",
+        "k8s/Namespace//argocd",
+        "k8s/Namespace//default",
+        "k8s/Namespace//dev-envs",
+        "k8s/Namespace//game-servers",
+        "k8s/Namespace//gitlab",
+        "k8s/Namespace//iam",
+        "k8s/Namespace//ingress-nginx",
+        "k8s/Namespace//kube-system",
+        "k8s/Namespace//monitoring",
+        "k8s/Namespace//security",
+        "k8s/Namespace//storage-system",
+        "k8s/Node//nodealpha01",
+        "k8s/Node//nodebeta02",
+        "k8s/Node//nodegamma03",
+        "k8s/Namespace//ai-sandbox"
+      ]
+    },
+    {
+      "id": "k8s/Deployment/ai-infra/ollama",
+      "label": "ollama",
+      "kind": "kubernetes_deployment",
+      "domain": "deployments_k8s",
+      "summary": "ollama",
+      "primary_url": "https://kubernetes.cluster.example.org",
+      "drilldown_children": [],
+      "resource_kind": "Deployment",
+      "namespace": "ai-infra",
+      "resource": {
+        "kind": "Deployment",
+        "metadata": {
+          "name": "ollama",
+          "namespace": "ai-infra",
+          "labels": {
+            "app": "ollama"
+          }
+        },
+        "spec": {
+          "replicas": 1,
+          "template": {
+            "spec": {
+              "containers": [
+                {
+                  "name": "ollama",
+                  "resources": {
+                    "requests": {
+                      "cpu": "10m",
+                      "memory": "16Mi"
+                    },
+                    "limits": {
+                      "cpu": "500m",
+                      "memory": "512Mi"
+                    }
+                  },
+                  "securityContext": {
+                    "runAsNonRoot": true,
+                    "runAsUser": 10000,
+                    "readOnlyRootFilesystem": true,
+                    "allowPrivilegeEscalation": false,
+                    "capabilities": {
+                      "drop": [
+                        "ALL"
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        "status": {
+          "readyReplicas": 1
+        }
+      }
+    },
+    {
+      "id": "k8s/Deployment/argocd/argocd-example",
+      "label": "argocd-example",
+      "kind": "kubernetes_deployment",
+      "domain": "deployments_k8s",
+      "summary": "argocd-example",
+      "primary_url": "https://kubernetes.cluster.example.org",
+      "drilldown_children": [],
+      "resource_kind": "Deployment",
+      "namespace": "argocd",
+      "resource": {
+        "kind": "Deployment",
+        "metadata": {
+          "name": "argocd-example",
+          "namespace": "argocd",
+          "labels": {
+            "app": "argocd-example"
+          }
+        },
+        "spec": {
+          "replicas": 1,
+          "template": {
+            "spec": {
+              "containers": [
+                {
+                  "name": "argocd-example",
+                  "resources": {
+                    "requests": {
+                      "cpu": "10m",
+                      "memory": "16Mi"
+                    },
+                    "limits": {
+                      "cpu": "500m",
+                      "memory": "512Mi"
+                    }
+                  },
+                  "securityContext": {
+                    "runAsNonRoot": true,
+                    "runAsUser": 10000,
+                    "readOnlyRootFilesystem": true,
+                    "allowPrivilegeEscalation": false,
+                    "capabilities": {
+                      "drop": [
+                        "ALL"
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        "status": {
+          "readyReplicas": 1
+        }
+      }
+    },
+    {
+      "id": "k8s/Deployment/argocd/argocd-server",
+      "label": "argocd-server",
+      "kind": "kubernetes_deployment",
+      "domain": "deployments_k8s",
+      "summary": "argocd-server",
+      "primary_url": "https://kubernetes.cluster.example.org",
+      "drilldown_children": [],
+      "resource_kind": "Deployment",
+      "namespace": "argocd",
+      "resource": {
+        "kind": "Deployment",
+        "metadata": {
+          "name": "argocd-server",
+          "namespace": "argocd",
+          "labels": {
+            "app": "argocd-server"
+          }
+        },
+        "spec": {
+          "replicas": 1,
+          "template": {
+            "spec": {
+              "containers": [
+                {
+                  "name": "argocd-server",
+                  "resources": {
+                    "requests": {
+                      "cpu": "10m",
+                      "memory": "16Mi"
+                    },
+                    "limits": {
+                      "cpu": "500m",
+                      "memory": "512Mi"
+                    }
+                  },
+                  "securityContext": {
+                    "runAsNonRoot": true,
+                    "runAsUser": 10000,
+                    "readOnlyRootFilesystem": true,
+                    "allowPrivilegeEscalation": false,
+                    "capabilities": {
+                      "drop": [
+                        "ALL"
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        "status": {
+          "readyReplicas": 1
+        }
+      }
+    },
+    {
+      "id": "k8s/Deployment/default/default-example",
+      "label": "default-example",
+      "kind": "kubernetes_deployment",
+      "domain": "deployments_k8s",
+      "summary": "default-example",
+      "primary_url": "https://kubernetes.cluster.example.org",
+      "drilldown_children": [],
+      "resource_kind": "Deployment",
+      "namespace": "default",
+      "resource": {
+        "kind": "Deployment",
+        "metadata": {
+          "name": "default-example",
+          "namespace": "default",
+          "labels": {
+            "app": "default-example"
+          }
+        },
+        "spec": {
+          "replicas": 1,
+          "template": {
+            "spec": {
+              "containers": [
+                {
+                  "name": "default-example",
+                  "resources": {
+                    "requests": {
+                      "cpu": "10m",
+                      "memory": "16Mi"
+                    },
+                    "limits": {
+                      "cpu": "500m",
+                      "memory": "512Mi"
+                    }
+                  },
+                  "securityContext": {
+                    "runAsNonRoot": true,
+                    "runAsUser": 10000,
+                    "readOnlyRootFilesystem": true,
+                    "allowPrivilegeEscalation": false,
+                    "capabilities": {
+                      "drop": [
+                        "ALL"
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        "status": {
+          "readyReplicas": 1
+        }
+      }
+    },
+    {
+      "id": "k8s/Deployment/dev-envs/argon",
+      "label": "argon",
+      "kind": "kubernetes_deployment",
+      "domain": "deployments_k8s",
+      "summary": "argon",
+      "primary_url": "https://kubernetes.cluster.example.org",
+      "drilldown_children": [],
+      "resource_kind": "Deployment",
+      "namespace": "dev-envs",
+      "resource": {
+        "kind": "Deployment",
+        "metadata": {
+          "name": "argon",
+          "namespace": "dev-envs",
+          "labels": {
+            "app": "argon"
+          }
+        },
+        "spec": {
+          "replicas": 1,
+          "template": {
+            "spec": {
+              "containers": [
+                {
+                  "name": "argon",
+                  "resources": {
+                    "requests": {
+                      "cpu": "10m",
+                      "memory": "16Mi"
+                    },
+                    "limits": {
+                      "cpu": "500m",
+                      "memory": "512Mi"
+                    }
+                  },
+                  "securityContext": {
+                    "runAsNonRoot": true,
+                    "runAsUser": 10000,
+                    "readOnlyRootFilesystem": true,
+                    "allowPrivilegeEscalation": false,
+                    "capabilities": {
+                      "drop": [
+                        "ALL"
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        "status": {
+          "readyReplicas": 1
+        }
+      }
+    },
+    {
+      "id": "k8s/Deployment/game-servers/factorio",
+      "label": "factorio",
+      "kind": "kubernetes_deployment",
+      "domain": "deployments_k8s",
+      "summary": "factorio",
+      "primary_url": "https://kubernetes.cluster.example.org",
+      "drilldown_children": [],
+      "resource_kind": "Deployment",
+      "namespace": "game-servers",
+      "resource": {
+        "kind": "Deployment",
+        "metadata": {
+          "name": "factorio",
+          "namespace": "game-servers",
+          "labels": {
+            "app": "factorio"
+          }
+        },
+        "spec": {
+          "replicas": 1,
+          "template": {
+            "spec": {
+              "containers": [
+                {
+                  "name": "factorio",
+                  "resources": {
+                    "requests": {
+                      "cpu": "10m",
+                      "memory": "16Mi"
+                    },
+                    "limits": {
+                      "cpu": "500m",
+                      "memory": "512Mi"
+                    }
+                  },
+                  "securityContext": {
+                    "runAsNonRoot": true,
+                    "runAsUser": 10000,
+                    "readOnlyRootFilesystem": true,
+                    "allowPrivilegeEscalation": false,
+                    "capabilities": {
+                      "drop": [
+                        "ALL"
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        "status": {
+          "readyReplicas": 1
+        }
+      }
+    },
+    {
+      "id": "k8s/Deployment/game-servers/minecraft",
+      "label": "minecraft",
+      "kind": "kubernetes_deployment",
+      "domain": "deployments_k8s",
+      "summary": "minecraft",
+      "primary_url": "https://kubernetes.cluster.example.org",
+      "drilldown_children": [],
+      "resource_kind": "Deployment",
+      "namespace": "game-servers",
+      "resource": {
+        "kind": "Deployment",
+        "metadata": {
+          "name": "minecraft",
+          "namespace": "game-servers",
+          "labels": {
+            "app": "minecraft"
+          }
+        },
+        "spec": {
+          "replicas": 1,
+          "template": {
+            "spec": {
+              "containers": [
+                {
+                  "name": "minecraft",
+                  "resources": {
+                    "requests": {
+                      "cpu": "10m",
+                      "memory": "16Mi"
+                    },
+                    "limits": {
+                      "cpu": "500m",
+                      "memory": "512Mi"
+                    }
+                  },
+                  "securityContext": {
+                    "runAsNonRoot": true,
+                    "runAsUser": 10000,
+                    "readOnlyRootFilesystem": true,
+                    "allowPrivilegeEscalation": false,
+                    "capabilities": {
+                      "drop": [
+                        "ALL"
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        "status": {
+          "readyReplicas": 1
+        }
+      }
+    },
+    {
+      "id": "k8s/Deployment/gitlab/gitlab",
+      "label": "gitlab",
+      "kind": "kubernetes_deployment",
+      "domain": "deployments_k8s",
+      "summary": "gitlab",
+      "primary_url": "https://kubernetes.cluster.example.org",
+      "drilldown_children": [],
+      "resource_kind": "Deployment",
+      "namespace": "gitlab",
+      "resource": {
+        "kind": "Deployment",
+        "metadata": {
+          "name": "gitlab",
+          "namespace": "gitlab",
+          "labels": {
+            "app": "gitlab"
+          }
+        },
+        "spec": {
+          "replicas": 1,
+          "template": {
+            "spec": {
+              "containers": [
+                {
+                  "name": "gitlab",
+                  "resources": {
+                    "requests": {
+                      "cpu": "10m",
+                      "memory": "16Mi"
+                    },
+                    "limits": {
+                      "cpu": "500m",
+                      "memory": "512Mi"
+                    }
+                  },
+                  "securityContext": {
+                    "runAsNonRoot": true,
+                    "runAsUser": 10000,
+                    "readOnlyRootFilesystem": true,
+                    "allowPrivilegeEscalation": false,
+                    "capabilities": {
+                      "drop": [
+                        "ALL"
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        "status": {
+          "readyReplicas": 1
+        }
+      }
+    },
+    {
+      "id": "k8s/Deployment/gitlab/gitlab-example",
+      "label": "gitlab-example",
+      "kind": "kubernetes_deployment",
+      "domain": "deployments_k8s",
+      "summary": "gitlab-example",
+      "primary_url": "https://kubernetes.cluster.example.org",
+      "drilldown_children": [],
+      "resource_kind": "Deployment",
+      "namespace": "gitlab",
+      "resource": {
+        "kind": "Deployment",
+        "metadata": {
+          "name": "gitlab-example",
+          "namespace": "gitlab",
+          "labels": {
+            "app": "gitlab-example"
+          }
+        },
+        "spec": {
+          "replicas": 1,
+          "template": {
+            "spec": {
+              "containers": [
+                {
+                  "name": "gitlab-example",
+                  "resources": {
+                    "requests": {
+                      "cpu": "10m",
+                      "memory": "16Mi"
+                    },
+                    "limits": {
+                      "cpu": "500m",
+                      "memory": "512Mi"
+                    }
+                  },
+                  "securityContext": {
+                    "runAsNonRoot": true,
+                    "runAsUser": 10000,
+                    "readOnlyRootFilesystem": true,
+                    "allowPrivilegeEscalation": false,
+                    "capabilities": {
+                      "drop": [
+                        "ALL"
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        "status": {
+          "readyReplicas": 1
+        }
+      }
+    },
+    {
+      "id": "k8s/Deployment/iam/authentik-server",
+      "label": "authentik-server",
+      "kind": "kubernetes_deployment",
+      "domain": "deployments_k8s",
+      "summary": "authentik-server",
+      "primary_url": "https://kubernetes.cluster.example.org",
+      "drilldown_children": [],
+      "resource_kind": "Deployment",
+      "namespace": "iam",
+      "resource": {
+        "kind": "Deployment",
+        "metadata": {
+          "name": "authentik-server",
+          "namespace": "iam",
+          "labels": {
+            "app": "authentik-server"
+          }
+        },
+        "spec": {
+          "replicas": 1,
+          "template": {
+            "spec": {
+              "containers": [
+                {
+                  "name": "authentik-server",
+                  "resources": {
+                    "requests": {
+                      "cpu": "10m",
+                      "memory": "16Mi"
+                    },
+                    "limits": {
+                      "cpu": "500m",
+                      "memory": "512Mi"
+                    }
+                  },
+                  "securityContext": {
+                    "runAsNonRoot": true,
+                    "runAsUser": 10000,
+                    "readOnlyRootFilesystem": true,
+                    "allowPrivilegeEscalation": false,
+                    "capabilities": {
+                      "drop": [
+                        "ALL"
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        "status": {
+          "readyReplicas": 1
+        }
+      }
+    },
+    {
+      "id": "k8s/Deployment/iam/iam-example",
+      "label": "iam-example",
+      "kind": "kubernetes_deployment",
+      "domain": "deployments_k8s",
+      "summary": "iam-example",
+      "primary_url": "https://kubernetes.cluster.example.org",
+      "drilldown_children": [],
+      "resource_kind": "Deployment",
+      "namespace": "iam",
+      "resource": {
+        "kind": "Deployment",
+        "metadata": {
+          "name": "iam-example",
+          "namespace": "iam",
+          "labels": {
+            "app": "iam-example"
+          }
+        },
+        "spec": {
+          "replicas": 1,
+          "template": {
+            "spec": {
+              "containers": [
+                {
+                  "name": "iam-example",
+                  "resources": {
+                    "requests": {
+                      "cpu": "10m",
+                      "memory": "16Mi"
+                    },
+                    "limits": {
+                      "cpu": "500m",
+                      "memory": "512Mi"
+                    }
+                  },
+                  "securityContext": {
+                    "runAsNonRoot": true,
+                    "runAsUser": 10000,
+                    "readOnlyRootFilesystem": true,
+                    "allowPrivilegeEscalation": false,
+                    "capabilities": {
+                      "drop": [
+                        "ALL"
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        "status": {
+          "readyReplicas": 1
+        }
+      }
+    },
+    {
+      "id": "k8s/Deployment/iam/openbao-agent-injector",
+      "label": "openbao-agent-injector",
+      "kind": "kubernetes_deployment",
+      "domain": "deployments_k8s",
+      "summary": "openbao-agent-injector",
+      "primary_url": "https://kubernetes.cluster.example.org",
+      "drilldown_children": [],
+      "resource_kind": "Deployment",
+      "namespace": "iam",
+      "resource": {
+        "kind": "Deployment",
+        "metadata": {
+          "name": "openbao-agent-injector",
+          "namespace": "iam",
+          "labels": {
+            "app": "openbao-agent-injector"
+          }
+        },
+        "spec": {
+          "replicas": 1,
+          "template": {
+            "spec": {
+              "containers": [
+                {
+                  "name": "openbao-agent-injector",
+                  "resources": {
+                    "requests": {
+                      "cpu": "10m",
+                      "memory": "16Mi"
+                    },
+                    "limits": {
+                      "cpu": "500m",
+                      "memory": "512Mi"
+                    }
+                  },
+                  "securityContext": {
+                    "runAsNonRoot": true,
+                    "runAsUser": 10000,
+                    "readOnlyRootFilesystem": true,
+                    "allowPrivilegeEscalation": false,
+                    "capabilities": {
+                      "drop": [
+                        "ALL"
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        "status": {
+          "readyReplicas": 1
+        }
+      }
+    },
+    {
+      "id": "k8s/Deployment/ingress-nginx/ingress-nginx-controller",
+      "label": "ingress-nginx-controller",
+      "kind": "kubernetes_deployment",
+      "domain": "deployments_k8s",
+      "summary": "ingress-nginx-controller",
+      "primary_url": "https://kubernetes.cluster.example.org",
+      "drilldown_children": [],
+      "resource_kind": "Deployment",
+      "namespace": "ingress-nginx",
+      "resource": {
+        "kind": "Deployment",
+        "metadata": {
+          "name": "ingress-nginx-controller",
+          "namespace": "ingress-nginx",
+          "labels": {
+            "app": "ingress-nginx-controller"
+          }
+        },
+        "spec": {
+          "replicas": 1,
+          "template": {
+            "spec": {
+              "containers": [
+                {
+                  "name": "ingress-nginx-controller",
+                  "resources": {
+                    "requests": {
+                      "cpu": "10m",
+                      "memory": "16Mi"
+                    },
+                    "limits": {
+                      "cpu": "500m",
+                      "memory": "512Mi"
+                    }
+                  },
+                  "securityContext": {
+                    "runAsNonRoot": true,
+                    "runAsUser": 10000,
+                    "readOnlyRootFilesystem": true,
+                    "allowPrivilegeEscalation": false,
+                    "capabilities": {
+                      "drop": [
+                        "ALL"
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        "status": {
+          "readyReplicas": 1
+        }
+      }
+    },
+    {
+      "id": "k8s/Deployment/ingress-nginx/ingress-nginx-example",
+      "label": "ingress-nginx-example",
+      "kind": "kubernetes_deployment",
+      "domain": "deployments_k8s",
+      "summary": "ingress-nginx-example",
+      "primary_url": "https://kubernetes.cluster.example.org",
+      "drilldown_children": [],
+      "resource_kind": "Deployment",
+      "namespace": "ingress-nginx",
+      "resource": {
+        "kind": "Deployment",
+        "metadata": {
+          "name": "ingress-nginx-example",
+          "namespace": "ingress-nginx",
+          "labels": {
+            "app": "ingress-nginx-example"
+          }
+        },
+        "spec": {
+          "replicas": 1,
+          "template": {
+            "spec": {
+              "containers": [
+                {
+                  "name": "ingress-nginx-example",
+                  "resources": {
+                    "requests": {
+                      "cpu": "10m",
+                      "memory": "16Mi"
+                    },
+                    "limits": {
+                      "cpu": "500m",
+                      "memory": "512Mi"
+                    }
+                  },
+                  "securityContext": {
+                    "runAsNonRoot": true,
+                    "runAsUser": 10000,
+                    "readOnlyRootFilesystem": true,
+                    "allowPrivilegeEscalation": false,
+                    "capabilities": {
+                      "drop": [
+                        "ALL"
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        "status": {
+          "readyReplicas": 1
+        }
+      }
+    },
+    {
+      "id": "k8s/Deployment/kube-system/external-secrets",
+      "label": "external-secrets",
+      "kind": "kubernetes_deployment",
+      "domain": "deployments_k8s",
+      "summary": "external-secrets",
+      "primary_url": "https://kubernetes.cluster.example.org",
+      "drilldown_children": [],
+      "resource_kind": "Deployment",
+      "namespace": "kube-system",
+      "resource": {
+        "kind": "Deployment",
+        "metadata": {
+          "name": "external-secrets",
+          "namespace": "kube-system",
+          "labels": {
+            "app": "external-secrets"
+          }
+        },
+        "spec": {
+          "replicas": 1,
+          "template": {
+            "spec": {
+              "containers": [
+                {
+                  "name": "external-secrets",
+                  "resources": {
+                    "requests": {
+                      "cpu": "10m",
+                      "memory": "16Mi"
+                    },
+                    "limits": {
+                      "cpu": "500m",
+                      "memory": "512Mi"
+                    }
+                  },
+                  "securityContext": {
+                    "runAsNonRoot": true,
+                    "runAsUser": 10000,
+                    "readOnlyRootFilesystem": true,
+                    "allowPrivilegeEscalation": false,
+                    "capabilities": {
+                      "drop": [
+                        "ALL"
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        "status": {
+          "readyReplicas": 1
+        }
+      }
+    },
+    {
+      "id": "k8s/Deployment/kube-system/kube-system-example",
+      "label": "kube-system-example",
+      "kind": "kubernetes_deployment",
+      "domain": "deployments_k8s",
+      "summary": "kube-system-example",
+      "primary_url": "https://kubernetes.cluster.example.org",
+      "drilldown_children": [],
+      "resource_kind": "Deployment",
+      "namespace": "kube-system",
+      "resource": {
+        "kind": "Deployment",
+        "metadata": {
+          "name": "kube-system-example",
+          "namespace": "kube-system",
+          "labels": {
+            "app": "kube-system-example"
+          }
+        },
+        "spec": {
+          "replicas": 1,
+          "template": {
+            "spec": {
+              "containers": [
+                {
+                  "name": "kube-system-example",
+                  "resources": {
+                    "requests": {
+                      "cpu": "10m",
+                      "memory": "16Mi"
+                    },
+                    "limits": {
+                      "cpu": "500m",
+                      "memory": "512Mi"
+                    }
+                  },
+                  "securityContext": {
+                    "runAsNonRoot": true,
+                    "runAsUser": 10000,
+                    "readOnlyRootFilesystem": true,
+                    "allowPrivilegeEscalation": false,
+                    "capabilities": {
+                      "drop": [
+                        "ALL"
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        "status": {
+          "readyReplicas": 1
+        }
+      }
+    },
+    {
+      "id": "k8s/Deployment/monitoring/kube-prometheus-stack-grafana",
+      "label": "kube-prometheus-stack-grafana",
+      "kind": "kubernetes_deployment",
+      "domain": "deployments_k8s",
+      "summary": "kube-prometheus-stack-grafana",
+      "primary_url": "https://kubernetes.cluster.example.org",
+      "drilldown_children": [],
+      "resource_kind": "Deployment",
+      "namespace": "monitoring",
+      "resource": {
+        "kind": "Deployment",
+        "metadata": {
+          "name": "kube-prometheus-stack-grafana",
+          "namespace": "monitoring",
+          "labels": {
+            "app": "kube-prometheus-stack-grafana"
+          }
+        },
+        "spec": {
+          "replicas": 1,
+          "template": {
+            "spec": {
+              "containers": [
+                {
+                  "name": "kube-prometheus-stack-grafana",
+                  "resources": {
+                    "requests": {
+                      "cpu": "10m",
+                      "memory": "16Mi"
+                    },
+                    "limits": {
+                      "cpu": "500m",
+                      "memory": "512Mi"
+                    }
+                  },
+                  "securityContext": {
+                    "runAsNonRoot": true,
+                    "runAsUser": 10000,
+                    "readOnlyRootFilesystem": true,
+                    "allowPrivilegeEscalation": false,
+                    "capabilities": {
+                      "drop": [
+                        "ALL"
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        "status": {
+          "readyReplicas": 1
+        }
+      }
+    },
+    {
+      "id": "k8s/Deployment/monitoring/monitoring-example",
+      "label": "monitoring-example",
+      "kind": "kubernetes_deployment",
+      "domain": "deployments_k8s",
+      "summary": "monitoring-example",
+      "primary_url": "https://kubernetes.cluster.example.org",
+      "drilldown_children": [],
+      "resource_kind": "Deployment",
+      "namespace": "monitoring",
+      "resource": {
+        "kind": "Deployment",
+        "metadata": {
+          "name": "monitoring-example",
+          "namespace": "monitoring",
+          "labels": {
+            "app": "monitoring-example"
+          }
+        },
+        "spec": {
+          "replicas": 1,
+          "template": {
+            "spec": {
+              "containers": [
+                {
+                  "name": "monitoring-example",
+                  "resources": {
+                    "requests": {
+                      "cpu": "10m",
+                      "memory": "16Mi"
+                    },
+                    "limits": {
+                      "cpu": "500m",
+                      "memory": "512Mi"
+                    }
+                  },
+                  "securityContext": {
+                    "runAsNonRoot": true,
+                    "runAsUser": 10000,
+                    "readOnlyRootFilesystem": true,
+                    "allowPrivilegeEscalation": false,
+                    "capabilities": {
+                      "drop": [
+                        "ALL"
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        "status": {
+          "readyReplicas": 1
+        }
+      }
+    },
+    {
+      "id": "k8s/Deployment/security/defectdojo",
+      "label": "defectdojo",
+      "kind": "kubernetes_deployment",
+      "domain": "deployments_k8s",
+      "summary": "defectdojo",
+      "primary_url": "https://kubernetes.cluster.example.org",
+      "drilldown_children": [],
+      "resource_kind": "Deployment",
+      "namespace": "security",
+      "resource": {
+        "kind": "Deployment",
+        "metadata": {
+          "name": "defectdojo",
+          "namespace": "security",
+          "labels": {
+            "app": "defectdojo"
+          }
+        },
+        "spec": {
+          "replicas": 1,
+          "template": {
+            "spec": {
+              "containers": [
+                {
+                  "name": "defectdojo",
+                  "resources": {
+                    "requests": {
+                      "cpu": "10m",
+                      "memory": "16Mi"
+                    },
+                    "limits": {
+                      "cpu": "500m",
+                      "memory": "512Mi"
+                    }
+                  },
+                  "securityContext": {
+                    "runAsNonRoot": true,
+                    "runAsUser": 10000,
+                    "readOnlyRootFilesystem": true,
+                    "allowPrivilegeEscalation": false,
+                    "capabilities": {
+                      "drop": [
+                        "ALL"
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        "status": {
+          "readyReplicas": 1
+        }
+      }
+    },
+    {
+      "id": "k8s/Deployment/security/trivy",
+      "label": "trivy",
+      "kind": "kubernetes_deployment",
+      "domain": "deployments_k8s",
+      "summary": "trivy",
+      "primary_url": "https://kubernetes.cluster.example.org",
+      "drilldown_children": [],
+      "resource_kind": "Deployment",
+      "namespace": "security",
+      "resource": {
+        "kind": "Deployment",
+        "metadata": {
+          "name": "trivy",
+          "namespace": "security",
+          "labels": {
+            "app": "trivy"
+          }
+        },
+        "spec": {
+          "replicas": 1,
+          "template": {
+            "spec": {
+              "containers": [
+                {
+                  "name": "trivy",
+                  "resources": {
+                    "requests": {
+                      "cpu": "10m",
+                      "memory": "16Mi"
+                    },
+                    "limits": {
+                      "cpu": "500m",
+                      "memory": "512Mi"
+                    }
+                  },
+                  "securityContext": {
+                    "runAsNonRoot": true,
+                    "runAsUser": 10000,
+                    "readOnlyRootFilesystem": true,
+                    "allowPrivilegeEscalation": false,
+                    "capabilities": {
+                      "drop": [
+                        "ALL"
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        "status": {
+          "readyReplicas": 1
+        }
+      }
+    },
+    {
+      "id": "k8s/Deployment/security/trivy-operator",
+      "label": "trivy-operator",
+      "kind": "kubernetes_deployment",
+      "domain": "deployments_k8s",
+      "summary": "trivy-operator",
+      "primary_url": "https://kubernetes.cluster.example.org",
+      "drilldown_children": [],
+      "resource_kind": "Deployment",
+      "namespace": "security",
+      "resource": {
+        "kind": "Deployment",
+        "metadata": {
+          "name": "trivy-operator",
+          "namespace": "security",
+          "labels": {
+            "app": "trivy-operator"
+          }
+        },
+        "spec": {
+          "replicas": 1,
+          "template": {
+            "spec": {
+              "containers": [
+                {
+                  "name": "trivy-operator",
+                  "resources": {
+                    "requests": {
+                      "cpu": "10m",
+                      "memory": "16Mi"
+                    },
+                    "limits": {
+                      "cpu": "500m",
+                      "memory": "512Mi"
+                    }
+                  },
+                  "securityContext": {
+                    "runAsNonRoot": true,
+                    "runAsUser": 10000,
+                    "readOnlyRootFilesystem": true,
+                    "allowPrivilegeEscalation": false,
+                    "capabilities": {
+                      "drop": [
+                        "ALL"
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        "status": {
+          "readyReplicas": 1
+        }
+      }
+    },
+    {
+      "id": "k8s/Deployment/storage-system/storage-system-example",
+      "label": "storage-system-example",
+      "kind": "kubernetes_deployment",
+      "domain": "deployments_k8s",
+      "summary": "storage-system-example",
+      "primary_url": "https://kubernetes.cluster.example.org",
+      "drilldown_children": [],
+      "resource_kind": "Deployment",
+      "namespace": "storage-system",
+      "resource": {
+        "kind": "Deployment",
+        "metadata": {
+          "name": "storage-system-example",
+          "namespace": "storage-system",
+          "labels": {
+            "app": "storage-system-example"
+          }
+        },
+        "spec": {
+          "replicas": 1,
+          "template": {
+            "spec": {
+              "containers": [
+                {
+                  "name": "storage-system-example",
+                  "resources": {
+                    "requests": {
+                      "cpu": "10m",
+                      "memory": "16Mi"
+                    },
+                    "limits": {
+                      "cpu": "500m",
+                      "memory": "512Mi"
+                    }
+                  },
+                  "securityContext": {
+                    "runAsNonRoot": true,
+                    "runAsUser": 10000,
+                    "readOnlyRootFilesystem": true,
+                    "allowPrivilegeEscalation": false,
+                    "capabilities": {
+                      "drop": [
+                        "ALL"
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        "status": {
+          "readyReplicas": 1
+        }
+      }
+    },
+    {
+      "id": "k8s/Deployment/storage-system/zfs-nfs-driver-democratic-csi-controller",
+      "label": "zfs-nfs-driver-democratic-csi-controller",
+      "kind": "kubernetes_deployment",
+      "domain": "deployments_k8s",
+      "summary": "zfs-nfs-driver-democratic-csi-controller",
+      "primary_url": "https://kubernetes.cluster.example.org",
+      "drilldown_children": [],
+      "resource_kind": "Deployment",
+      "namespace": "storage-system",
+      "resource": {
+        "kind": "Deployment",
+        "metadata": {
+          "name": "zfs-nfs-driver-democratic-csi-controller",
+          "namespace": "storage-system",
+          "labels": {
+            "app": "zfs-nfs-driver-democratic-csi-controller"
+          }
+        },
+        "spec": {
+          "replicas": 1,
+          "template": {
+            "spec": {
+              "containers": [
+                {
+                  "name": "zfs-nfs-driver-democratic-csi-controller",
+                  "resources": {
+                    "requests": {
+                      "cpu": "10m",
+                      "memory": "16Mi"
+                    },
+                    "limits": {
+                      "cpu": "500m",
+                      "memory": "512Mi"
+                    }
+                  },
+                  "securityContext": {
+                    "runAsNonRoot": true,
+                    "runAsUser": 10000,
+                    "readOnlyRootFilesystem": true,
+                    "allowPrivilegeEscalation": false,
+                    "capabilities": {
+                      "drop": [
+                        "ALL"
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        "status": {
+          "readyReplicas": 1
+        }
+      }
+    },
+    {
+      "id": "k8s/Ingress/ai-infra/ollama",
+      "label": "ollama",
+      "kind": "kubernetes_ingress",
+      "domain": "deployments_k8s",
+      "summary": "ollama",
+      "primary_url": "https://ai-infra.cluster.example.org",
+      "drilldown_children": [],
+      "resource_kind": "Ingress",
+      "namespace": "ai-infra",
+      "resource": {
+        "kind": "Ingress",
+        "metadata": {
+          "name": "ollama",
+          "namespace": "ai-infra",
+          "labels": {
+            "app": "ollama"
+          }
+        },
+        "spec": {
+          "rules": [
+            {
+              "host": "ai-infra.cluster.example.org",
+              "http": {
+                "paths": [
+                  {
+                    "backend": {
+                      "service": {
+                        "name": "ollama"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "status": {
+          "loadBalancer": {
+            "ingress": [
+              {
+                "ip": "172.20.1.210"
+              }
+            ]
+          }
+        }
+      },
+      "hosts": [
+        "ai-infra.cluster.example.org"
+      ]
+    },
+    {
+      "id": "k8s/Ingress/argocd/argocd-example",
+      "label": "argocd-example",
+      "kind": "kubernetes_ingress",
+      "domain": "deployments_k8s",
+      "summary": "argocd-example",
+      "primary_url": "https://argocd.cluster.example.org",
+      "drilldown_children": [],
+      "resource_kind": "Ingress",
+      "namespace": "argocd",
+      "resource": {
+        "kind": "Ingress",
+        "metadata": {
+          "name": "argocd-example",
+          "namespace": "argocd",
+          "labels": {
+            "app": "argocd-example"
+          }
+        },
+        "spec": {
+          "rules": [
+            {
+              "host": "argocd.cluster.example.org",
+              "http": {
+                "paths": [
+                  {
+                    "backend": {
+                      "service": {
+                        "name": "argocd-example"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "status": {
+          "loadBalancer": {
+            "ingress": [
+              {
+                "ip": "172.20.1.215"
+              }
+            ]
+          }
+        }
+      },
+      "hosts": [
+        "argocd.cluster.example.org"
+      ]
+    },
+    {
+      "id": "k8s/Ingress/default/default-example",
+      "label": "default-example",
+      "kind": "kubernetes_ingress",
+      "domain": "deployments_k8s",
+      "summary": "default-example",
+      "primary_url": "https://default.cluster.example.org",
+      "drilldown_children": [],
+      "resource_kind": "Ingress",
+      "namespace": "default",
+      "resource": {
+        "kind": "Ingress",
+        "metadata": {
+          "name": "default-example",
+          "namespace": "default",
+          "labels": {
+            "app": "default-example"
+          }
+        },
+        "spec": {
+          "rules": [
+            {
+              "host": "default.cluster.example.org",
+              "http": {
+                "paths": [
+                  {
+                    "backend": {
+                      "service": {
+                        "name": "default-example"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "status": {
+          "loadBalancer": {
+            "ingress": [
+              {
+                "ip": "172.20.1.220"
+              }
+            ]
+          }
+        }
+      },
+      "hosts": [
+        "default.cluster.example.org"
+      ]
+    },
+    {
+      "id": "k8s/Ingress/dev-envs/argon",
+      "label": "argon",
+      "kind": "kubernetes_ingress",
+      "domain": "deployments_k8s",
+      "summary": "argon",
+      "primary_url": "https://dev-envs.cluster.example.org",
+      "drilldown_children": [],
+      "resource_kind": "Ingress",
+      "namespace": "dev-envs",
+      "resource": {
+        "kind": "Ingress",
+        "metadata": {
+          "name": "argon",
+          "namespace": "dev-envs",
+          "labels": {
+            "app": "argon"
+          }
+        },
+        "spec": {
+          "rules": [
+            {
+              "host": "dev-envs.cluster.example.org",
+              "http": {
+                "paths": [
+                  {
+                    "backend": {
+                      "service": {
+                        "name": "argon"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "status": {
+          "loadBalancer": {
+            "ingress": [
+              {
+                "ip": "172.20.1.211"
+              }
+            ]
+          }
+        }
+      },
+      "hosts": [
+        "dev-envs.cluster.example.org"
+      ]
+    },
+    {
+      "id": "k8s/Ingress/game-servers/factorio",
+      "label": "factorio",
+      "kind": "kubernetes_ingress",
+      "domain": "deployments_k8s",
+      "summary": "factorio",
+      "primary_url": "https://game-servers.cluster.example.org",
+      "drilldown_children": [],
+      "resource_kind": "Ingress",
+      "namespace": "game-servers",
+      "resource": {
+        "kind": "Ingress",
+        "metadata": {
+          "name": "factorio",
+          "namespace": "game-servers",
+          "labels": {
+            "app": "factorio"
+          }
+        },
+        "spec": {
+          "rules": [
+            {
+              "host": "game-servers.cluster.example.org",
+              "http": {
+                "paths": [
+                  {
+                    "backend": {
+                      "service": {
+                        "name": "factorio"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "status": {
+          "loadBalancer": {
+            "ingress": [
+              {
+                "ip": "172.20.1.212"
+              }
+            ]
+          }
+        }
+      },
+      "hosts": [
+        "game-servers.cluster.example.org"
+      ]
+    },
+    {
+      "id": "k8s/Ingress/gitlab/gitlab-example",
+      "label": "gitlab-example",
+      "kind": "kubernetes_ingress",
+      "domain": "deployments_k8s",
+      "summary": "gitlab-example",
+      "primary_url": "https://gitlab.cluster.example.org",
+      "drilldown_children": [],
+      "resource_kind": "Ingress",
+      "namespace": "gitlab",
+      "resource": {
+        "kind": "Ingress",
+        "metadata": {
+          "name": "gitlab-example",
+          "namespace": "gitlab",
+          "labels": {
+            "app": "gitlab-example"
+          }
+        },
+        "spec": {
+          "rules": [
+            {
+              "host": "gitlab.cluster.example.org",
+              "http": {
+                "paths": [
+                  {
+                    "backend": {
+                      "service": {
+                        "name": "gitlab-example"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "status": {
+          "loadBalancer": {
+            "ingress": [
+              {
+                "ip": "172.20.1.214"
+              }
+            ]
+          }
+        }
+      },
+      "hosts": [
+        "gitlab.cluster.example.org"
+      ]
+    },
+    {
+      "id": "k8s/Ingress/iam/iam-example",
+      "label": "iam-example",
+      "kind": "kubernetes_ingress",
+      "domain": "deployments_k8s",
+      "summary": "iam-example",
+      "primary_url": "https://iam.cluster.example.org",
+      "drilldown_children": [],
+      "resource_kind": "Ingress",
+      "namespace": "iam",
+      "resource": {
+        "kind": "Ingress",
+        "metadata": {
+          "name": "iam-example",
+          "namespace": "iam",
+          "labels": {
+            "app": "iam-example"
+          }
+        },
+        "spec": {
+          "rules": [
+            {
+              "host": "iam.cluster.example.org",
+              "http": {
+                "paths": [
+                  {
+                    "backend": {
+                      "service": {
+                        "name": "iam-example"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "status": {
+          "loadBalancer": {
+            "ingress": [
+              {
+                "ip": "172.20.1.217"
+              }
+            ]
+          }
+        }
+      },
+      "hosts": [
+        "iam.cluster.example.org"
+      ]
+    },
+    {
+      "id": "k8s/Ingress/ingress-nginx/ingress-nginx-example",
+      "label": "ingress-nginx-example",
+      "kind": "kubernetes_ingress",
+      "domain": "deployments_k8s",
+      "summary": "ingress-nginx-example",
+      "primary_url": "https://ingress-nginx.cluster.example.org",
+      "drilldown_children": [],
+      "resource_kind": "Ingress",
+      "namespace": "ingress-nginx",
+      "resource": {
+        "kind": "Ingress",
+        "metadata": {
+          "name": "ingress-nginx-example",
+          "namespace": "ingress-nginx",
+          "labels": {
+            "app": "ingress-nginx-example"
+          }
+        },
+        "spec": {
+          "rules": [
+            {
+              "host": "ingress-nginx.cluster.example.org",
+              "http": {
+                "paths": [
+                  {
+                    "backend": {
+                      "service": {
+                        "name": "ingress-nginx-example"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "status": {
+          "loadBalancer": {
+            "ingress": [
+              {
+                "ip": "172.20.1.221"
+              }
+            ]
+          }
+        }
+      },
+      "hosts": [
+        "ingress-nginx.cluster.example.org"
+      ]
+    },
+    {
+      "id": "k8s/Ingress/kube-system/kube-system-example",
+      "label": "kube-system-example",
+      "kind": "kubernetes_ingress",
+      "domain": "deployments_k8s",
+      "summary": "kube-system-example",
+      "primary_url": "https://kube-system.cluster.example.org",
+      "drilldown_children": [],
+      "resource_kind": "Ingress",
+      "namespace": "kube-system",
+      "resource": {
+        "kind": "Ingress",
+        "metadata": {
+          "name": "kube-system-example",
+          "namespace": "kube-system",
+          "labels": {
+            "app": "kube-system-example"
+          }
+        },
+        "spec": {
+          "rules": [
+            {
+              "host": "kube-system.cluster.example.org",
+              "http": {
+                "paths": [
+                  {
+                    "backend": {
+                      "service": {
+                        "name": "kube-system-example"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "status": {
+          "loadBalancer": {
+            "ingress": [
+              {
+                "ip": "172.20.1.219"
+              }
+            ]
+          }
+        }
+      },
+      "hosts": [
+        "kube-system.cluster.example.org"
+      ]
+    },
+    {
+      "id": "k8s/Ingress/monitoring/monitoring-example",
+      "label": "monitoring-example",
+      "kind": "kubernetes_ingress",
+      "domain": "deployments_k8s",
+      "summary": "monitoring-example",
+      "primary_url": "https://monitoring.cluster.example.org",
+      "drilldown_children": [],
+      "resource_kind": "Ingress",
+      "namespace": "monitoring",
+      "resource": {
+        "kind": "Ingress",
+        "metadata": {
+          "name": "monitoring-example",
+          "namespace": "monitoring",
+          "labels": {
+            "app": "monitoring-example"
+          }
+        },
+        "spec": {
+          "rules": [
+            {
+              "host": "monitoring.cluster.example.org",
+              "http": {
+                "paths": [
+                  {
+                    "backend": {
+                      "service": {
+                        "name": "monitoring-example"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "status": {
+          "loadBalancer": {
+            "ingress": [
+              {
+                "ip": "172.20.1.216"
+              }
+            ]
+          }
+        }
+      },
+      "hosts": [
+        "monitoring.cluster.example.org"
+      ]
+    },
+    {
+      "id": "k8s/Ingress/security/defectdojo",
+      "label": "defectdojo",
+      "kind": "kubernetes_ingress",
+      "domain": "deployments_k8s",
+      "summary": "defectdojo",
+      "primary_url": "https://security.cluster.example.org",
+      "drilldown_children": [],
+      "resource_kind": "Ingress",
+      "namespace": "security",
+      "resource": {
+        "kind": "Ingress",
+        "metadata": {
+          "name": "defectdojo",
+          "namespace": "security",
+          "labels": {
+            "app": "defectdojo"
+          }
+        },
+        "spec": {
+          "rules": [
+            {
+              "host": "security.cluster.example.org",
+              "http": {
+                "paths": [
+                  {
+                    "backend": {
+                      "service": {
+                        "name": "defectdojo"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "status": {
+          "loadBalancer": {
+            "ingress": [
+              {
+                "ip": "172.20.1.213"
+              }
+            ]
+          }
+        }
+      },
+      "hosts": [
+        "security.cluster.example.org"
+      ]
+    },
+    {
+      "id": "k8s/Ingress/storage-system/storage-system-example",
+      "label": "storage-system-example",
+      "kind": "kubernetes_ingress",
+      "domain": "deployments_k8s",
+      "summary": "storage-system-example",
+      "primary_url": "https://storage-system.cluster.example.org",
+      "drilldown_children": [],
+      "resource_kind": "Ingress",
+      "namespace": "storage-system",
+      "resource": {
+        "kind": "Ingress",
+        "metadata": {
+          "name": "storage-system-example",
+          "namespace": "storage-system",
+          "labels": {
+            "app": "storage-system-example"
+          }
+        },
+        "spec": {
+          "rules": [
+            {
+              "host": "storage-system.cluster.example.org",
+              "http": {
+                "paths": [
+                  {
+                    "backend": {
+                      "service": {
+                        "name": "storage-system-example"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "status": {
+          "loadBalancer": {
+            "ingress": [
+              {
+                "ip": "172.20.1.218"
+              }
+            ]
+          }
+        }
+      },
+      "hosts": [
+        "storage-system.cluster.example.org"
+      ]
+    },
+    {
+      "id": "k8s/Namespace//ai-infra",
+      "label": "ai-infra",
+      "kind": "kubernetes_namespace",
+      "domain": "deployments_k8s",
+      "summary": "ai-infra",
+      "primary_url": "https://kubernetes.cluster.example.org",
+      "drilldown_children": [
+        "k8s/Deployment/ai-infra/ollama",
+        "k8s/Ingress/ai-infra/ollama",
+        "k8s/Pod/ai-infra/ollama-pod",
+        "k8s/Service/ai-infra/ollama",
+        "kb-gpu-005"
+      ],
+      "resource_kind": "Namespace",
+      "namespace": "",
+      "resource": {
+        "kind": "Namespace",
+        "metadata": {
+          "name": "ai-infra"
+        }
+      }
+    },
+    {
+      "id": "k8s/Namespace//argocd",
+      "label": "argocd",
+      "kind": "kubernetes_namespace",
+      "domain": "deployments_k8s",
+      "summary": "argocd",
+      "primary_url": "https://kubernetes.cluster.example.org",
+      "drilldown_children": [
+        "k8s/Deployment/argocd/argocd-example",
+        "k8s/Deployment/argocd/argocd-server",
+        "k8s/Ingress/argocd/argocd-example",
+        "k8s/Pod/argocd/argocd-example-pod",
+        "k8s/Pod/argocd/argocd-server-pod",
+        "k8s/Service/argocd/argocd-example",
+        "k8s/Service/argocd/argocd-server",
+        "kb-gitops-009"
+      ],
+      "resource_kind": "Namespace",
+      "namespace": "",
+      "resource": {
+        "kind": "Namespace",
+        "metadata": {
+          "name": "argocd"
+        }
+      }
+    },
+    {
+      "id": "k8s/Namespace//default",
+      "label": "default",
+      "kind": "kubernetes_namespace",
+      "domain": "deployments_k8s",
+      "summary": "default",
+      "primary_url": "https://kubernetes.cluster.example.org",
+      "drilldown_children": [
+        "k8s/Deployment/default/default-example",
+        "k8s/Ingress/default/default-example",
+        "k8s/Pod/default/default-example-pod",
+        "k8s/Service/default/default-example"
+      ],
+      "resource_kind": "Namespace",
+      "namespace": "",
+      "resource": {
+        "kind": "Namespace",
+        "metadata": {
+          "name": "default"
+        }
+      }
+    },
+    {
+      "id": "k8s/Namespace//dev-envs",
+      "label": "dev-envs",
+      "kind": "kubernetes_namespace",
+      "domain": "deployments_k8s",
+      "summary": "dev-envs",
+      "primary_url": "https://kubernetes.cluster.example.org",
+      "drilldown_children": [
+        "k8s/Deployment/dev-envs/argon",
+        "k8s/Ingress/dev-envs/argon",
+        "k8s/Pod/dev-envs/argon-pod",
+        "k8s/Service/dev-envs/argon"
+      ],
+      "resource_kind": "Namespace",
+      "namespace": "",
+      "resource": {
+        "kind": "Namespace",
+        "metadata": {
+          "name": "dev-envs"
+        }
+      }
+    },
+    {
+      "id": "k8s/Namespace//game-servers",
+      "label": "game-servers",
+      "kind": "kubernetes_namespace",
+      "domain": "deployments_k8s",
+      "summary": "game-servers",
+      "primary_url": "https://kubernetes.cluster.example.org",
+      "drilldown_children": [
+        "k8s/Deployment/game-servers/factorio",
+        "k8s/Deployment/game-servers/minecraft",
+        "k8s/Ingress/game-servers/factorio",
+        "k8s/Pod/game-servers/factorio-pod",
+        "k8s/Pod/game-servers/minecraft-pod",
+        "k8s/Service/game-servers/factorio",
+        "k8s/Service/game-servers/minecraft",
+        "kb-game-003"
+      ],
+      "resource_kind": "Namespace",
+      "namespace": "",
+      "resource": {
+        "kind": "Namespace",
+        "metadata": {
+          "name": "game-servers"
+        }
+      }
+    },
+    {
+      "id": "k8s/Namespace//gitlab",
+      "label": "gitlab",
+      "kind": "kubernetes_namespace",
+      "domain": "deployments_k8s",
+      "summary": "gitlab",
+      "primary_url": "https://kubernetes.cluster.example.org",
+      "drilldown_children": [
+        "k8s/Deployment/gitlab/gitlab",
+        "k8s/Deployment/gitlab/gitlab-example",
+        "k8s/Ingress/gitlab/gitlab-example",
+        "k8s/Pod/gitlab/gitlab-example-pod",
+        "k8s/Pod/gitlab/gitlab-pod",
+        "k8s/Service/gitlab/gitlab",
+        "k8s/Service/gitlab/gitlab-example",
+        "kb-gp-002",
+        "k8s/Pod/gitlab/runner-job-demo-failed"
+      ],
+      "resource_kind": "Namespace",
+      "namespace": "",
+      "resource": {
+        "kind": "Namespace",
+        "metadata": {
+          "name": "gitlab"
+        }
+      }
+    },
+    {
+      "id": "k8s/Namespace//iam",
+      "label": "iam",
+      "kind": "kubernetes_namespace",
+      "domain": "deployments_k8s",
+      "summary": "iam",
+      "primary_url": "https://kubernetes.cluster.example.org",
+      "drilldown_children": [
+        "k8s/Deployment/iam/authentik-server",
+        "k8s/Deployment/iam/iam-example",
+        "k8s/Deployment/iam/openbao-agent-injector",
+        "k8s/Ingress/iam/iam-example",
+        "k8s/Pod/iam/authentik-server-pod",
+        "k8s/Pod/iam/iam-example-pod",
+        "k8s/Pod/iam/openbao-agent-injector-pod",
+        "k8s/Service/iam/authentik-server",
+        "k8s/Service/iam/iam-example",
+        "k8s/Service/iam/openbao-agent-injector",
+        "kb-db-001",
+        "kb-iam-008"
+      ],
+      "resource_kind": "Namespace",
+      "namespace": "",
+      "resource": {
+        "kind": "Namespace",
+        "metadata": {
+          "name": "iam"
+        }
+      }
+    },
+    {
+      "id": "k8s/Namespace//ingress-nginx",
+      "label": "ingress-nginx",
+      "kind": "kubernetes_namespace",
+      "domain": "deployments_k8s",
+      "summary": "ingress-nginx",
+      "primary_url": "https://kubernetes.cluster.example.org",
+      "drilldown_children": [
+        "k8s/Deployment/ingress-nginx/ingress-nginx-controller",
+        "k8s/Deployment/ingress-nginx/ingress-nginx-example",
+        "k8s/Ingress/ingress-nginx/ingress-nginx-example",
+        "k8s/Pod/ingress-nginx/ingress-nginx-controller-pod",
+        "k8s/Pod/ingress-nginx/ingress-nginx-example-pod",
+        "k8s/Service/ingress-nginx/ingress-nginx-controller",
+        "k8s/Service/ingress-nginx/ingress-nginx-example",
+        "kb-dns-004"
+      ],
+      "resource_kind": "Namespace",
+      "namespace": "",
+      "resource": {
+        "kind": "Namespace",
+        "metadata": {
+          "name": "ingress-nginx"
+        }
+      }
+    },
+    {
+      "id": "k8s/Namespace//kube-system",
+      "label": "kube-system",
+      "kind": "kubernetes_namespace",
+      "domain": "deployments_k8s",
+      "summary": "kube-system",
+      "primary_url": "https://kubernetes.cluster.example.org",
+      "drilldown_children": [
+        "k8s/Deployment/kube-system/external-secrets",
+        "k8s/Deployment/kube-system/kube-system-example",
+        "k8s/Ingress/kube-system/kube-system-example",
+        "k8s/Pod/kube-system/external-secrets-pod",
+        "k8s/Pod/kube-system/kube-system-example-pod",
+        "k8s/Service/kube-system/external-secrets",
+        "k8s/Service/kube-system/kube-system-example"
+      ],
+      "resource_kind": "Namespace",
+      "namespace": "",
+      "resource": {
+        "kind": "Namespace",
+        "metadata": {
+          "name": "kube-system"
+        }
+      }
+    },
+    {
+      "id": "k8s/Namespace//monitoring",
+      "label": "monitoring",
+      "kind": "kubernetes_namespace",
+      "domain": "deployments_k8s",
+      "summary": "monitoring",
+      "primary_url": "https://kubernetes.cluster.example.org",
+      "drilldown_children": [
+        "k8s/Deployment/monitoring/kube-prometheus-stack-grafana",
+        "k8s/Deployment/monitoring/monitoring-example",
+        "k8s/Ingress/monitoring/monitoring-example",
+        "k8s/Pod/monitoring/kube-prometheus-stack-grafana-pod",
+        "k8s/Pod/monitoring/monitoring-example-pod",
+        "k8s/Service/monitoring/kube-prometheus-stack-grafana",
+        "k8s/Service/monitoring/monitoring-example",
+        "kb-game-003",
+        "kb-ops-006"
+      ],
+      "resource_kind": "Namespace",
+      "namespace": "",
+      "resource": {
+        "kind": "Namespace",
+        "metadata": {
+          "name": "monitoring"
+        }
+      }
+    },
+    {
+      "id": "k8s/Namespace//security",
+      "label": "security",
+      "kind": "kubernetes_namespace",
+      "domain": "deployments_k8s",
+      "summary": "security",
+      "primary_url": "https://kubernetes.cluster.example.org",
+      "drilldown_children": [
+        "k8s/Deployment/security/defectdojo",
+        "k8s/Deployment/security/trivy",
+        "k8s/Deployment/security/trivy-operator",
+        "k8s/Ingress/security/defectdojo",
+        "k8s/Pod/security/defectdojo-pod",
+        "k8s/Pod/security/trivy-operator-pod",
+        "k8s/Pod/security/trivy-pod",
+        "k8s/Service/security/defectdojo",
+        "k8s/Service/security/trivy",
+        "k8s/Service/security/trivy-operator"
+      ],
+      "resource_kind": "Namespace",
+      "namespace": "",
+      "resource": {
+        "kind": "Namespace",
+        "metadata": {
+          "name": "security"
+        }
+      }
+    },
+    {
+      "id": "k8s/Namespace//storage-system",
+      "label": "storage-system",
+      "kind": "kubernetes_namespace",
+      "domain": "deployments_k8s",
+      "summary": "storage-system",
+      "primary_url": "https://kubernetes.cluster.example.org",
+      "drilldown_children": [
+        "k8s/Deployment/storage-system/storage-system-example",
+        "k8s/Deployment/storage-system/zfs-nfs-driver-democratic-csi-controller",
+        "k8s/Ingress/storage-system/storage-system-example",
+        "k8s/Pod/storage-system/storage-system-example-pod",
+        "k8s/Pod/storage-system/zfs-nfs-driver-democratic-csi-controller-pod",
+        "k8s/Service/storage-system/storage-system-example",
+        "k8s/Service/storage-system/zfs-nfs-driver-democratic-csi-controller",
+        "kb-stor-007"
+      ],
+      "resource_kind": "Namespace",
+      "namespace": "",
+      "resource": {
+        "kind": "Namespace",
+        "metadata": {
+          "name": "storage-system"
+        }
+      }
+    },
+    {
+      "id": "k8s/Node//nodealpha01",
+      "label": "nodealpha01",
+      "kind": "physical_hardware",
+      "domain": "hardware_topology",
+      "summary": "nodealpha01",
+      "primary_url": "https://kubernetes.cluster.example.org",
+      "drilldown_children": [],
+      "resource_kind": "Node",
+      "namespace": "",
+      "resource": {
+        "kind": "Node",
+        "metadata": {
+          "name": "nodealpha01"
+        },
+        "status": {
+          "addresses": [
+            {
+              "type": "InternalIP",
+              "address": "10.20.3.2"
+            }
+          ],
+          "conditions": [
+            {
+              "type": "Ready",
+              "status": "True"
+            }
+          ],
+          "capacity": {
+            "cpu": "4",
+            "memory": "16150320Ki",
+            "pods": "250"
+          },
+          "allocatable": {
+            "cpu": "3600m",
+            "memory": "11444016Ki",
+            "pods": "250"
+          }
+        }
+      },
+      "metrics": {
+        "cpu_percent": 21.0,
+        "ram_percent": 77.0,
+        "cpu_used": "840m",
+        "ram_used": "12142Mi"
+      }
+    },
+    {
+      "id": "k8s/Node//nodebeta02",
+      "label": "nodebeta02",
+      "kind": "physical_hardware",
+      "domain": "hardware_topology",
+      "summary": "nodebeta02",
+      "primary_url": "https://kubernetes.cluster.example.org",
+      "drilldown_children": [],
+      "resource_kind": "Node",
+      "namespace": "",
+      "resource": {
+        "kind": "Node",
+        "metadata": {
+          "name": "nodebeta02"
+        },
+        "status": {
+          "addresses": [
+            {
+              "type": "InternalIP",
+              "address": "10.20.3.10"
+            }
+          ],
+          "conditions": [
+            {
+              "type": "Ready",
+              "status": "False"
+            }
+          ],
+          "capacity": {
+            "cpu": "20",
+            "memory": "32594020Ki",
+            "pods": "110"
+          },
+          "allocatable": {
+            "cpu": "20",
+            "memory": "32491620Ki",
+            "pods": "110"
+          }
+        }
+      },
+      "metrics": {
+        "cpu_percent": 0.0,
+        "ram_percent": 0.0,
+        "cpu_used": "0m",
+        "ram_used": "0Mi"
+      }
+    },
+    {
+      "id": "k8s/Node//nodegamma03",
+      "label": "nodegamma03",
+      "kind": "physical_hardware",
+      "domain": "hardware_topology",
+      "summary": "nodegamma03",
+      "primary_url": "https://kubernetes.cluster.example.org",
+      "drilldown_children": [],
+      "resource_kind": "Node",
+      "namespace": "",
+      "resource": {
+        "kind": "Node",
+        "metadata": {
+          "name": "nodegamma03"
+        },
+        "status": {
+          "addresses": [
+            {
+              "type": "InternalIP",
+              "address": "10.20.3.13"
+            }
+          ],
+          "conditions": [
+            {
+              "type": "Ready",
+              "status": "True"
+            }
+          ],
+          "capacity": {
+            "cpu": "20",
+            "memory": "131587792Ki",
+            "nvidia.com/gpu": "10",
+            "pods": "500"
+          },
+          "allocatable": {
+            "cpu": "20",
+            "memory": "131485392Ki",
+            "nvidia.com/gpu": "10",
+            "pods": "500"
+          }
+        }
+      },
+      "metrics": {
+        "cpu_percent": 39.0,
+        "ram_percent": 61.0,
+        "cpu_used": "7800m",
+        "ram_used": "78339Mi"
+      }
+    },
+    {
+      "id": "k8s/Pod/ai-infra/ollama-pod",
+      "label": "ollama-pod",
+      "kind": "kubernetes_pod",
+      "domain": "deployments_k8s",
+      "summary": "ollama-pod",
+      "primary_url": "https://kubernetes.cluster.example.org",
+      "drilldown_children": [],
+      "resource_kind": "Pod",
+      "namespace": "ai-infra",
+      "resource": {
+        "kind": "Pod",
+        "metadata": {
+          "name": "ollama-pod",
+          "namespace": "ai-infra",
+          "labels": {
+            "app": "ollama"
+          }
+        },
+        "spec": {
+          "nodeName": "nodealpha01",
+          "containers": [
+            {
+              "name": "ollama-pod",
+              "resources": {
+                "requests": {
+                  "cpu": "10m",
+                  "memory": "16Mi"
+                },
+                "limits": {
+                  "cpu": "500m",
+                  "memory": "512Mi"
+                }
+              },
+              "securityContext": {
+                "runAsNonRoot": true,
+                "runAsUser": 10000,
+                "readOnlyRootFilesystem": true,
+                "allowPrivilegeEscalation": false,
+                "capabilities": {
+                  "drop": [
+                    "ALL"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        "status": {
+          "phase": "Running"
+        }
+      }
+    },
+    {
+      "id": "k8s/Pod/argocd/argocd-example-pod",
+      "label": "argocd-example-pod",
+      "kind": "kubernetes_pod",
+      "domain": "deployments_k8s",
+      "summary": "argocd-example-pod",
+      "primary_url": "https://kubernetes.cluster.example.org",
+      "drilldown_children": [],
+      "resource_kind": "Pod",
+      "namespace": "argocd",
+      "resource": {
+        "kind": "Pod",
+        "metadata": {
+          "name": "argocd-example-pod",
+          "namespace": "argocd",
+          "labels": {
+            "app": "argocd-example"
+          }
+        },
+        "spec": {
+          "nodeName": "nodegamma03",
+          "containers": [
+            {
+              "name": "argocd-example-pod",
+              "resources": {
+                "requests": {
+                  "cpu": "10m",
+                  "memory": "16Mi"
+                },
+                "limits": {
+                  "cpu": "500m",
+                  "memory": "512Mi"
+                }
+              },
+              "securityContext": {
+                "runAsNonRoot": true,
+                "runAsUser": 10000,
+                "readOnlyRootFilesystem": true,
+                "allowPrivilegeEscalation": false,
+                "capabilities": {
+                  "drop": [
+                    "ALL"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        "status": {
+          "phase": "Running"
+        }
+      }
+    },
+    {
+      "id": "k8s/Pod/argocd/argocd-server-pod",
+      "label": "argocd-server-pod",
+      "kind": "kubernetes_pod",
+      "domain": "deployments_k8s",
+      "summary": "argocd-server-pod",
+      "primary_url": "https://kubernetes.cluster.example.org",
+      "drilldown_children": [],
+      "resource_kind": "Pod",
+      "namespace": "argocd",
+      "resource": {
+        "kind": "Pod",
+        "metadata": {
+          "name": "argocd-server-pod",
+          "namespace": "argocd",
+          "labels": {
+            "app": "argocd-server"
+          }
+        },
+        "spec": {
+          "nodeName": "nodebeta02",
+          "containers": [
+            {
+              "name": "argocd-server-pod",
+              "resources": {
+                "requests": {
+                  "cpu": "10m",
+                  "memory": "16Mi"
+                },
+                "limits": {
+                  "cpu": "500m",
+                  "memory": "512Mi"
+                }
+              },
+              "securityContext": {
+                "runAsNonRoot": true,
+                "runAsUser": 10000,
+                "readOnlyRootFilesystem": true,
+                "allowPrivilegeEscalation": false,
+                "capabilities": {
+                  "drop": [
+                    "ALL"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        "status": {
+          "phase": "Running"
+        }
+      }
+    },
+    {
+      "id": "k8s/Pod/default/default-example-pod",
+      "label": "default-example-pod",
+      "kind": "kubernetes_pod",
+      "domain": "deployments_k8s",
+      "summary": "default-example-pod",
+      "primary_url": "https://kubernetes.cluster.example.org",
+      "drilldown_children": [],
+      "resource_kind": "Pod",
+      "namespace": "default",
+      "resource": {
+        "kind": "Pod",
+        "metadata": {
+          "name": "default-example-pod",
+          "namespace": "default",
+          "labels": {
+            "app": "default-example"
+          }
+        },
+        "spec": {
+          "nodeName": "nodebeta02",
+          "containers": [
+            {
+              "name": "default-example-pod",
+              "resources": {
+                "requests": {
+                  "cpu": "10m",
+                  "memory": "16Mi"
+                },
+                "limits": {
+                  "cpu": "500m",
+                  "memory": "512Mi"
+                }
+              },
+              "securityContext": {
+                "runAsNonRoot": true,
+                "runAsUser": 10000,
+                "readOnlyRootFilesystem": true,
+                "allowPrivilegeEscalation": false,
+                "capabilities": {
+                  "drop": [
+                    "ALL"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        "status": {
+          "phase": "Running"
+        }
+      }
+    },
+    {
+      "id": "k8s/Pod/dev-envs/argon-pod",
+      "label": "argon-pod",
+      "kind": "kubernetes_pod",
+      "domain": "deployments_k8s",
+      "summary": "argon-pod",
+      "primary_url": "https://kubernetes.cluster.example.org",
+      "drilldown_children": [],
+      "resource_kind": "Pod",
+      "namespace": "dev-envs",
+      "resource": {
+        "kind": "Pod",
+        "metadata": {
+          "name": "argon-pod",
+          "namespace": "dev-envs",
+          "labels": {
+            "app": "argon"
+          }
+        },
+        "spec": {
+          "nodeName": "nodebeta02",
+          "containers": [
+            {
+              "name": "argon-pod",
+              "resources": {
+                "requests": {
+                  "cpu": "10m",
+                  "memory": "16Mi"
+                },
+                "limits": {
+                  "cpu": "500m",
+                  "memory": "512Mi"
+                }
+              },
+              "securityContext": {
+                "runAsNonRoot": true,
+                "runAsUser": 10000,
+                "readOnlyRootFilesystem": true,
+                "allowPrivilegeEscalation": false,
+                "capabilities": {
+                  "drop": [
+                    "ALL"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        "status": {
+          "phase": "Running"
+        }
+      }
+    },
+    {
+      "id": "k8s/Pod/game-servers/factorio-pod",
+      "label": "factorio-pod",
+      "kind": "kubernetes_pod",
+      "domain": "deployments_k8s",
+      "summary": "factorio-pod",
+      "primary_url": "https://kubernetes.cluster.example.org",
+      "drilldown_children": [],
+      "resource_kind": "Pod",
+      "namespace": "game-servers",
+      "resource": {
+        "kind": "Pod",
+        "metadata": {
+          "name": "factorio-pod",
+          "namespace": "game-servers",
+          "labels": {
+            "app": "factorio"
+          }
+        },
+        "spec": {
+          "nodeName": "nodegamma03",
+          "containers": [
+            {
+              "name": "factorio-pod",
+              "resources": {
+                "requests": {
+                  "cpu": "10m",
+                  "memory": "16Mi"
+                },
+                "limits": {
+                  "cpu": "500m",
+                  "memory": "512Mi"
+                }
+              },
+              "securityContext": {
+                "runAsNonRoot": true,
+                "runAsUser": 10000,
+                "readOnlyRootFilesystem": true,
+                "allowPrivilegeEscalation": false,
+                "capabilities": {
+                  "drop": [
+                    "ALL"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        "status": {
+          "phase": "Running"
+        }
+      }
+    },
+    {
+      "id": "k8s/Pod/game-servers/minecraft-pod",
+      "label": "minecraft-pod",
+      "kind": "kubernetes_pod",
+      "domain": "deployments_k8s",
+      "summary": "minecraft-pod",
+      "primary_url": "https://kubernetes.cluster.example.org",
+      "drilldown_children": [],
+      "resource_kind": "Pod",
+      "namespace": "game-servers",
+      "resource": {
+        "kind": "Pod",
+        "metadata": {
+          "name": "minecraft-pod",
+          "namespace": "game-servers",
+          "labels": {
+            "app": "minecraft"
+          }
+        },
+        "spec": {
+          "nodeName": "nodegamma03",
+          "containers": [
+            {
+              "name": "minecraft-pod",
+              "resources": {
+                "requests": {
+                  "cpu": "10m",
+                  "memory": "16Mi"
+                },
+                "limits": {
+                  "cpu": "500m",
+                  "memory": "512Mi"
+                }
+              },
+              "securityContext": {
+                "runAsNonRoot": true,
+                "runAsUser": 10000,
+                "readOnlyRootFilesystem": true,
+                "allowPrivilegeEscalation": false,
+                "capabilities": {
+                  "drop": [
+                    "ALL"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        "status": {
+          "phase": "Running"
+        }
+      }
+    },
+    {
+      "id": "k8s/Pod/gitlab/gitlab-example-pod",
+      "label": "gitlab-example-pod",
+      "kind": "kubernetes_pod",
+      "domain": "deployments_k8s",
+      "summary": "gitlab-example-pod",
+      "primary_url": "https://kubernetes.cluster.example.org",
+      "drilldown_children": [],
+      "resource_kind": "Pod",
+      "namespace": "gitlab",
+      "resource": {
+        "kind": "Pod",
+        "metadata": {
+          "name": "gitlab-example-pod",
+          "namespace": "gitlab",
+          "labels": {
+            "app": "gitlab-example"
+          }
+        },
+        "spec": {
+          "nodeName": "nodebeta02",
+          "containers": [
+            {
+              "name": "gitlab-example-pod",
+              "resources": {
+                "requests": {
+                  "cpu": "10m",
+                  "memory": "16Mi"
+                },
+                "limits": {
+                  "cpu": "500m",
+                  "memory": "512Mi"
+                }
+              },
+              "securityContext": {
+                "runAsNonRoot": true,
+                "runAsUser": 10000,
+                "readOnlyRootFilesystem": true,
+                "allowPrivilegeEscalation": false,
+                "capabilities": {
+                  "drop": [
+                    "ALL"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        "status": {
+          "phase": "Running"
+        }
+      }
+    },
+    {
+      "id": "k8s/Pod/gitlab/gitlab-pod",
+      "label": "gitlab-pod",
+      "kind": "kubernetes_pod",
+      "domain": "deployments_k8s",
+      "summary": "gitlab-pod",
+      "primary_url": "https://kubernetes.cluster.example.org",
+      "drilldown_children": [],
+      "resource_kind": "Pod",
+      "namespace": "gitlab",
+      "resource": {
+        "kind": "Pod",
+        "metadata": {
+          "name": "gitlab-pod",
+          "namespace": "gitlab",
+          "labels": {
+            "app": "gitlab"
+          }
+        },
+        "spec": {
+          "nodeName": "nodealpha01",
+          "containers": [
+            {
+              "name": "gitlab-pod",
+              "resources": {
+                "requests": {
+                  "cpu": "10m",
+                  "memory": "16Mi"
+                },
+                "limits": {
+                  "cpu": "500m",
+                  "memory": "512Mi"
+                }
+              },
+              "securityContext": {
+                "runAsNonRoot": true,
+                "runAsUser": 10000,
+                "readOnlyRootFilesystem": true,
+                "allowPrivilegeEscalation": false,
+                "capabilities": {
+                  "drop": [
+                    "ALL"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        "status": {
+          "phase": "Running"
+        }
+      }
+    },
+    {
+      "id": "k8s/Pod/iam/authentik-server-pod",
+      "label": "authentik-server-pod",
+      "kind": "kubernetes_pod",
+      "domain": "deployments_k8s",
+      "summary": "authentik-server-pod",
+      "primary_url": "https://kubernetes.cluster.example.org",
+      "drilldown_children": [],
+      "resource_kind": "Pod",
+      "namespace": "iam",
+      "resource": {
+        "kind": "Pod",
+        "metadata": {
+          "name": "authentik-server-pod",
+          "namespace": "iam",
+          "labels": {
+            "app": "authentik-server"
+          }
+        },
+        "spec": {
+          "nodeName": "nodebeta02",
+          "containers": [
+            {
+              "name": "authentik-server-pod",
+              "resources": {
+                "requests": {
+                  "cpu": "10m",
+                  "memory": "16Mi"
+                },
+                "limits": {
+                  "cpu": "500m",
+                  "memory": "512Mi"
+                }
+              },
+              "securityContext": {
+                "runAsNonRoot": true,
+                "runAsUser": 10000,
+                "readOnlyRootFilesystem": true,
+                "allowPrivilegeEscalation": false,
+                "capabilities": {
+                  "drop": [
+                    "ALL"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        "status": {
+          "phase": "Running"
+        }
+      }
+    },
+    {
+      "id": "k8s/Pod/iam/iam-example-pod",
+      "label": "iam-example-pod",
+      "kind": "kubernetes_pod",
+      "domain": "deployments_k8s",
+      "summary": "iam-example-pod",
+      "primary_url": "https://kubernetes.cluster.example.org",
+      "drilldown_children": [],
+      "resource_kind": "Pod",
+      "namespace": "iam",
+      "resource": {
+        "kind": "Pod",
+        "metadata": {
+          "name": "iam-example-pod",
+          "namespace": "iam",
+          "labels": {
+            "app": "iam-example"
+          }
+        },
+        "spec": {
+          "nodeName": "nodebeta02",
+          "containers": [
+            {
+              "name": "iam-example-pod",
+              "resources": {
+                "requests": {
+                  "cpu": "10m",
+                  "memory": "16Mi"
+                },
+                "limits": {
+                  "cpu": "500m",
+                  "memory": "512Mi"
+                }
+              },
+              "securityContext": {
+                "runAsNonRoot": true,
+                "runAsUser": 10000,
+                "readOnlyRootFilesystem": true,
+                "allowPrivilegeEscalation": false,
+                "capabilities": {
+                  "drop": [
+                    "ALL"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        "status": {
+          "phase": "Running"
+        }
+      }
+    },
+    {
+      "id": "k8s/Pod/iam/openbao-agent-injector-pod",
+      "label": "openbao-agent-injector-pod",
+      "kind": "kubernetes_pod",
+      "domain": "deployments_k8s",
+      "summary": "openbao-agent-injector-pod",
+      "primary_url": "https://kubernetes.cluster.example.org",
+      "drilldown_children": [],
+      "resource_kind": "Pod",
+      "namespace": "iam",
+      "resource": {
+        "kind": "Pod",
+        "metadata": {
+          "name": "openbao-agent-injector-pod",
+          "namespace": "iam",
+          "labels": {
+            "app": "openbao-agent-injector"
+          }
+        },
+        "spec": {
+          "nodeName": "nodealpha01",
+          "containers": [
+            {
+              "name": "openbao-agent-injector-pod",
+              "resources": {
+                "requests": {
+                  "cpu": "10m",
+                  "memory": "16Mi"
+                },
+                "limits": {
+                  "cpu": "500m",
+                  "memory": "512Mi"
+                }
+              },
+              "securityContext": {
+                "runAsNonRoot": true,
+                "runAsUser": 10000,
+                "readOnlyRootFilesystem": true,
+                "allowPrivilegeEscalation": false,
+                "capabilities": {
+                  "drop": [
+                    "ALL"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        "status": {
+          "phase": "Running"
+        }
+      }
+    },
+    {
+      "id": "k8s/Pod/ingress-nginx/ingress-nginx-controller-pod",
+      "label": "ingress-nginx-controller-pod",
+      "kind": "kubernetes_pod",
+      "domain": "deployments_k8s",
+      "summary": "ingress-nginx-controller-pod",
+      "primary_url": "https://kubernetes.cluster.example.org",
+      "drilldown_children": [],
+      "resource_kind": "Pod",
+      "namespace": "ingress-nginx",
+      "resource": {
+        "kind": "Pod",
+        "metadata": {
+          "name": "ingress-nginx-controller-pod",
+          "namespace": "ingress-nginx",
+          "labels": {
+            "app": "ingress-nginx-controller"
+          }
+        },
+        "spec": {
+          "nodeName": "nodealpha01",
+          "containers": [
+            {
+              "name": "ingress-nginx-controller-pod",
+              "resources": {
+                "requests": {
+                  "cpu": "10m",
+                  "memory": "16Mi"
+                },
+                "limits": {
+                  "cpu": "500m",
+                  "memory": "512Mi"
+                }
+              },
+              "securityContext": {
+                "runAsNonRoot": true,
+                "runAsUser": 10000,
+                "readOnlyRootFilesystem": true,
+                "allowPrivilegeEscalation": false,
+                "capabilities": {
+                  "drop": [
+                    "ALL"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        "status": {
+          "phase": "Running"
+        }
+      }
+    },
+    {
+      "id": "k8s/Pod/ingress-nginx/ingress-nginx-example-pod",
+      "label": "ingress-nginx-example-pod",
+      "kind": "kubernetes_pod",
+      "domain": "deployments_k8s",
+      "summary": "ingress-nginx-example-pod",
+      "primary_url": "https://kubernetes.cluster.example.org",
+      "drilldown_children": [],
+      "resource_kind": "Pod",
+      "namespace": "ingress-nginx",
+      "resource": {
+        "kind": "Pod",
+        "metadata": {
+          "name": "ingress-nginx-example-pod",
+          "namespace": "ingress-nginx",
+          "labels": {
+            "app": "ingress-nginx-example"
+          }
+        },
+        "spec": {
+          "nodeName": "nodegamma03",
+          "containers": [
+            {
+              "name": "ingress-nginx-example-pod",
+              "resources": {
+                "requests": {
+                  "cpu": "10m",
+                  "memory": "16Mi"
+                },
+                "limits": {
+                  "cpu": "500m",
+                  "memory": "512Mi"
+                }
+              },
+              "securityContext": {
+                "runAsNonRoot": true,
+                "runAsUser": 10000,
+                "readOnlyRootFilesystem": true,
+                "allowPrivilegeEscalation": false,
+                "capabilities": {
+                  "drop": [
+                    "ALL"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        "status": {
+          "phase": "Running"
+        }
+      }
+    },
+    {
+      "id": "k8s/Pod/kube-system/external-secrets-pod",
+      "label": "external-secrets-pod",
+      "kind": "kubernetes_pod",
+      "domain": "deployments_k8s",
+      "summary": "external-secrets-pod",
+      "primary_url": "https://kubernetes.cluster.example.org",
+      "drilldown_children": [],
+      "resource_kind": "Pod",
+      "namespace": "kube-system",
+      "resource": {
+        "kind": "Pod",
+        "metadata": {
+          "name": "external-secrets-pod",
+          "namespace": "kube-system",
+          "labels": {
+            "app": "external-secrets"
+          }
+        },
+        "spec": {
+          "nodeName": "nodealpha01",
+          "containers": [
+            {
+              "name": "external-secrets-pod",
+              "resources": {
+                "requests": {
+                  "cpu": "10m",
+                  "memory": "16Mi"
+                },
+                "limits": {
+                  "cpu": "500m",
+                  "memory": "512Mi"
+                }
+              },
+              "securityContext": {
+                "runAsNonRoot": true,
+                "runAsUser": 10000,
+                "readOnlyRootFilesystem": true,
+                "allowPrivilegeEscalation": false,
+                "capabilities": {
+                  "drop": [
+                    "ALL"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        "status": {
+          "phase": "Running"
+        }
+      }
+    },
+    {
+      "id": "k8s/Pod/kube-system/kube-system-example-pod",
+      "label": "kube-system-example-pod",
+      "kind": "kubernetes_pod",
+      "domain": "deployments_k8s",
+      "summary": "kube-system-example-pod",
+      "primary_url": "https://kubernetes.cluster.example.org",
+      "drilldown_children": [],
+      "resource_kind": "Pod",
+      "namespace": "kube-system",
+      "resource": {
+        "kind": "Pod",
+        "metadata": {
+          "name": "kube-system-example-pod",
+          "namespace": "kube-system",
+          "labels": {
+            "app": "kube-system-example"
+          }
+        },
+        "spec": {
+          "nodeName": "nodealpha01",
+          "containers": [
+            {
+              "name": "kube-system-example-pod",
+              "resources": {
+                "requests": {
+                  "cpu": "10m",
+                  "memory": "16Mi"
+                },
+                "limits": {
+                  "cpu": "500m",
+                  "memory": "512Mi"
+                }
+              },
+              "securityContext": {
+                "runAsNonRoot": true,
+                "runAsUser": 10000,
+                "readOnlyRootFilesystem": true,
+                "allowPrivilegeEscalation": false,
+                "capabilities": {
+                  "drop": [
+                    "ALL"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        "status": {
+          "phase": "Running"
+        }
+      }
+    },
+    {
+      "id": "k8s/Pod/monitoring/kube-prometheus-stack-grafana-pod",
+      "label": "kube-prometheus-stack-grafana-pod",
+      "kind": "kubernetes_pod",
+      "domain": "deployments_k8s",
+      "summary": "kube-prometheus-stack-grafana-pod",
+      "primary_url": "https://kubernetes.cluster.example.org",
+      "drilldown_children": [],
+      "resource_kind": "Pod",
+      "namespace": "monitoring",
+      "resource": {
+        "kind": "Pod",
+        "metadata": {
+          "name": "kube-prometheus-stack-grafana-pod",
+          "namespace": "monitoring",
+          "labels": {
+            "app": "kube-prometheus-stack-grafana"
+          }
+        },
+        "spec": {
+          "nodeName": "nodealpha01",
+          "containers": [
+            {
+              "name": "kube-prometheus-stack-grafana-pod",
+              "resources": {
+                "requests": {
+                  "cpu": "10m",
+                  "memory": "16Mi"
+                },
+                "limits": {
+                  "cpu": "500m",
+                  "memory": "512Mi"
+                }
+              },
+              "securityContext": {
+                "runAsNonRoot": true,
+                "runAsUser": 10000,
+                "readOnlyRootFilesystem": true,
+                "allowPrivilegeEscalation": false,
+                "capabilities": {
+                  "drop": [
+                    "ALL"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        "status": {
+          "phase": "Running"
+        }
+      }
+    },
+    {
+      "id": "k8s/Pod/monitoring/monitoring-example-pod",
+      "label": "monitoring-example-pod",
+      "kind": "kubernetes_pod",
+      "domain": "deployments_k8s",
+      "summary": "monitoring-example-pod",
+      "primary_url": "https://kubernetes.cluster.example.org",
+      "drilldown_children": [],
+      "resource_kind": "Pod",
+      "namespace": "monitoring",
+      "resource": {
+        "kind": "Pod",
+        "metadata": {
+          "name": "monitoring-example-pod",
+          "namespace": "monitoring",
+          "labels": {
+            "app": "monitoring-example"
+          }
+        },
+        "spec": {
+          "nodeName": "nodealpha01",
+          "containers": [
+            {
+              "name": "monitoring-example-pod",
+              "resources": {
+                "requests": {
+                  "cpu": "10m",
+                  "memory": "16Mi"
+                },
+                "limits": {
+                  "cpu": "500m",
+                  "memory": "512Mi"
+                }
+              },
+              "securityContext": {
+                "runAsNonRoot": true,
+                "runAsUser": 10000,
+                "readOnlyRootFilesystem": true,
+                "allowPrivilegeEscalation": false,
+                "capabilities": {
+                  "drop": [
+                    "ALL"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        "status": {
+          "phase": "Running"
+        }
+      }
+    },
+    {
+      "id": "k8s/Pod/security/defectdojo-pod",
+      "label": "defectdojo-pod",
+      "kind": "kubernetes_pod",
+      "domain": "deployments_k8s",
+      "summary": "defectdojo-pod",
+      "primary_url": "https://kubernetes.cluster.example.org",
+      "drilldown_children": [],
+      "resource_kind": "Pod",
+      "namespace": "security",
+      "resource": {
+        "kind": "Pod",
+        "metadata": {
+          "name": "defectdojo-pod",
+          "namespace": "security",
+          "labels": {
+            "app": "defectdojo"
+          }
+        },
+        "spec": {
+          "nodeName": "nodealpha01",
+          "containers": [
+            {
+              "name": "defectdojo-pod",
+              "resources": {
+                "requests": {
+                  "cpu": "10m",
+                  "memory": "16Mi"
+                },
+                "limits": {
+                  "cpu": "500m",
+                  "memory": "512Mi"
+                }
+              },
+              "securityContext": {
+                "runAsNonRoot": true,
+                "runAsUser": 10000,
+                "readOnlyRootFilesystem": true,
+                "allowPrivilegeEscalation": false,
+                "capabilities": {
+                  "drop": [
+                    "ALL"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        "status": {
+          "phase": "Running"
+        }
+      }
+    },
+    {
+      "id": "k8s/Pod/security/trivy-operator-pod",
+      "label": "trivy-operator-pod",
+      "kind": "kubernetes_pod",
+      "domain": "deployments_k8s",
+      "summary": "trivy-operator-pod",
+      "primary_url": "https://kubernetes.cluster.example.org",
+      "drilldown_children": [],
+      "resource_kind": "Pod",
+      "namespace": "security",
+      "resource": {
+        "kind": "Pod",
+        "metadata": {
+          "name": "trivy-operator-pod",
+          "namespace": "security",
+          "labels": {
+            "app": "trivy-operator"
+          }
+        },
+        "spec": {
+          "nodeName": "nodebeta02",
+          "containers": [
+            {
+              "name": "trivy-operator-pod",
+              "resources": {
+                "requests": {
+                  "cpu": "10m",
+                  "memory": "16Mi"
+                },
+                "limits": {
+                  "cpu": "500m",
+                  "memory": "512Mi"
+                }
+              },
+              "securityContext": {
+                "runAsNonRoot": true,
+                "runAsUser": 10000,
+                "readOnlyRootFilesystem": true,
+                "allowPrivilegeEscalation": false,
+                "capabilities": {
+                  "drop": [
+                    "ALL"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        "status": {
+          "phase": "Running"
+        }
+      }
+    },
+    {
+      "id": "k8s/Pod/security/trivy-pod",
+      "label": "trivy-pod",
+      "kind": "kubernetes_pod",
+      "domain": "deployments_k8s",
+      "summary": "trivy-pod",
+      "primary_url": "https://kubernetes.cluster.example.org",
+      "drilldown_children": [],
+      "resource_kind": "Pod",
+      "namespace": "security",
+      "resource": {
+        "kind": "Pod",
+        "metadata": {
+          "name": "trivy-pod",
+          "namespace": "security",
+          "labels": {
+            "app": "trivy"
+          }
+        },
+        "spec": {
+          "nodeName": "nodebeta02",
+          "containers": [
+            {
+              "name": "trivy-pod",
+              "resources": {
+                "requests": {
+                  "cpu": "10m",
+                  "memory": "16Mi"
+                },
+                "limits": {
+                  "cpu": "500m",
+                  "memory": "512Mi"
+                }
+              },
+              "securityContext": {
+                "runAsNonRoot": true,
+                "runAsUser": 10000,
+                "readOnlyRootFilesystem": true,
+                "allowPrivilegeEscalation": false,
+                "capabilities": {
+                  "drop": [
+                    "ALL"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        "status": {
+          "phase": "Running"
+        }
+      }
+    },
+    {
+      "id": "k8s/Pod/storage-system/storage-system-example-pod",
+      "label": "storage-system-example-pod",
+      "kind": "kubernetes_pod",
+      "domain": "deployments_k8s",
+      "summary": "storage-system-example-pod",
+      "primary_url": "https://kubernetes.cluster.example.org",
+      "drilldown_children": [],
+      "resource_kind": "Pod",
+      "namespace": "storage-system",
+      "resource": {
+        "kind": "Pod",
+        "metadata": {
+          "name": "storage-system-example-pod",
+          "namespace": "storage-system",
+          "labels": {
+            "app": "storage-system-example"
+          }
+        },
+        "spec": {
+          "nodeName": "nodegamma03",
+          "containers": [
+            {
+              "name": "storage-system-example-pod",
+              "resources": {
+                "requests": {
+                  "cpu": "10m",
+                  "memory": "16Mi"
+                },
+                "limits": {
+                  "cpu": "500m",
+                  "memory": "512Mi"
+                }
+              },
+              "securityContext": {
+                "runAsNonRoot": true,
+                "runAsUser": 10000,
+                "readOnlyRootFilesystem": true,
+                "allowPrivilegeEscalation": false,
+                "capabilities": {
+                  "drop": [
+                    "ALL"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        "status": {
+          "phase": "Running"
+        }
+      }
+    },
+    {
+      "id": "k8s/Pod/storage-system/zfs-nfs-driver-democratic-csi-controller-pod",
+      "label": "zfs-nfs-driver-democratic-csi-controller-pod",
+      "kind": "kubernetes_pod",
+      "domain": "deployments_k8s",
+      "summary": "zfs-nfs-driver-democratic-csi-controller-pod",
+      "primary_url": "https://kubernetes.cluster.example.org",
+      "drilldown_children": [],
+      "resource_kind": "Pod",
+      "namespace": "storage-system",
+      "resource": {
+        "kind": "Pod",
+        "metadata": {
+          "name": "zfs-nfs-driver-democratic-csi-controller-pod",
+          "namespace": "storage-system",
+          "labels": {
+            "app": "zfs-nfs-driver-democratic-csi-controller"
+          }
+        },
+        "spec": {
+          "nodeName": "nodegamma03",
+          "containers": [
+            {
+              "name": "zfs-nfs-driver-democratic-csi-controller-pod",
+              "resources": {
+                "requests": {
+                  "cpu": "10m",
+                  "memory": "16Mi"
+                },
+                "limits": {
+                  "cpu": "500m",
+                  "memory": "512Mi"
+                }
+              },
+              "securityContext": {
+                "runAsNonRoot": true,
+                "runAsUser": 10000,
+                "readOnlyRootFilesystem": true,
+                "allowPrivilegeEscalation": false,
+                "capabilities": {
+                  "drop": [
+                    "ALL"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        "status": {
+          "phase": "Running"
+        }
+      }
+    },
+    {
+      "id": "k8s/Service/ai-infra/ollama",
+      "label": "ollama",
+      "kind": "kubernetes_service",
+      "domain": "deployments_k8s",
+      "summary": "ollama",
+      "primary_url": "https://kubernetes.cluster.example.org",
+      "drilldown_children": [],
+      "resource_kind": "Service",
+      "namespace": "ai-infra",
+      "resource": {
+        "kind": "Service",
+        "metadata": {
+          "name": "ollama",
+          "namespace": "ai-infra",
+          "labels": {
+            "app": "ollama"
+          }
+        },
+        "spec": {
+          "selector": {
+            "app": "ollama"
+          }
+        }
+      }
+    },
+    {
+      "id": "k8s/Service/argocd/argocd-example",
+      "label": "argocd-example",
+      "kind": "kubernetes_service",
+      "domain": "deployments_k8s",
+      "summary": "argocd-example",
+      "primary_url": "https://kubernetes.cluster.example.org",
+      "drilldown_children": [],
+      "resource_kind": "Service",
+      "namespace": "argocd",
+      "resource": {
+        "kind": "Service",
+        "metadata": {
+          "name": "argocd-example",
+          "namespace": "argocd",
+          "labels": {
+            "app": "argocd-example"
+          }
+        },
+        "spec": {
+          "selector": {
+            "app": "argocd-example"
+          }
+        }
+      }
+    },
+    {
+      "id": "k8s/Service/argocd/argocd-server",
+      "label": "argocd-server",
+      "kind": "kubernetes_service",
+      "domain": "deployments_k8s",
+      "summary": "argocd-server",
+      "primary_url": "https://kubernetes.cluster.example.org",
+      "drilldown_children": [],
+      "resource_kind": "Service",
+      "namespace": "argocd",
+      "resource": {
+        "kind": "Service",
+        "metadata": {
+          "name": "argocd-server",
+          "namespace": "argocd",
+          "labels": {
+            "app": "argocd-server"
+          }
+        },
+        "spec": {
+          "selector": {
+            "app": "argocd-server"
+          }
+        }
+      }
+    },
+    {
+      "id": "k8s/Service/default/default-example",
+      "label": "default-example",
+      "kind": "kubernetes_service",
+      "domain": "deployments_k8s",
+      "summary": "default-example",
+      "primary_url": "https://kubernetes.cluster.example.org",
+      "drilldown_children": [],
+      "resource_kind": "Service",
+      "namespace": "default",
+      "resource": {
+        "kind": "Service",
+        "metadata": {
+          "name": "default-example",
+          "namespace": "default",
+          "labels": {
+            "app": "default-example"
+          }
+        },
+        "spec": {
+          "selector": {
+            "app": "default-example"
+          }
+        }
+      }
+    },
+    {
+      "id": "k8s/Service/dev-envs/argon",
+      "label": "argon",
+      "kind": "kubernetes_service",
+      "domain": "deployments_k8s",
+      "summary": "argon",
+      "primary_url": "https://kubernetes.cluster.example.org",
+      "drilldown_children": [],
+      "resource_kind": "Service",
+      "namespace": "dev-envs",
+      "resource": {
+        "kind": "Service",
+        "metadata": {
+          "name": "argon",
+          "namespace": "dev-envs",
+          "labels": {
+            "app": "argon"
+          }
+        },
+        "spec": {
+          "selector": {
+            "app": "argon"
+          }
+        }
+      }
+    },
+    {
+      "id": "k8s/Service/game-servers/factorio",
+      "label": "factorio",
+      "kind": "kubernetes_service",
+      "domain": "deployments_k8s",
+      "summary": "factorio",
+      "primary_url": "https://kubernetes.cluster.example.org",
+      "drilldown_children": [],
+      "resource_kind": "Service",
+      "namespace": "game-servers",
+      "resource": {
+        "kind": "Service",
+        "metadata": {
+          "name": "factorio",
+          "namespace": "game-servers",
+          "labels": {
+            "app": "factorio"
+          }
+        },
+        "spec": {
+          "selector": {
+            "app": "factorio"
+          }
+        }
+      }
+    },
+    {
+      "id": "k8s/Service/game-servers/minecraft",
+      "label": "minecraft",
+      "kind": "kubernetes_service",
+      "domain": "deployments_k8s",
+      "summary": "minecraft",
+      "primary_url": "https://kubernetes.cluster.example.org",
+      "drilldown_children": [],
+      "resource_kind": "Service",
+      "namespace": "game-servers",
+      "resource": {
+        "kind": "Service",
+        "metadata": {
+          "name": "minecraft",
+          "namespace": "game-servers",
+          "labels": {
+            "app": "minecraft"
+          }
+        },
+        "spec": {
+          "selector": {
+            "app": "minecraft"
+          }
+        }
+      }
+    },
+    {
+      "id": "k8s/Service/gitlab/gitlab",
+      "label": "gitlab",
+      "kind": "kubernetes_service",
+      "domain": "deployments_k8s",
+      "summary": "gitlab",
+      "primary_url": "https://kubernetes.cluster.example.org",
+      "drilldown_children": [],
+      "resource_kind": "Service",
+      "namespace": "gitlab",
+      "resource": {
+        "kind": "Service",
+        "metadata": {
+          "name": "gitlab",
+          "namespace": "gitlab",
+          "labels": {
+            "app": "gitlab"
+          }
+        },
+        "spec": {
+          "selector": {
+            "app": "gitlab"
+          }
+        }
+      }
+    },
+    {
+      "id": "k8s/Service/gitlab/gitlab-example",
+      "label": "gitlab-example",
+      "kind": "kubernetes_service",
+      "domain": "deployments_k8s",
+      "summary": "gitlab-example",
+      "primary_url": "https://kubernetes.cluster.example.org",
+      "drilldown_children": [],
+      "resource_kind": "Service",
+      "namespace": "gitlab",
+      "resource": {
+        "kind": "Service",
+        "metadata": {
+          "name": "gitlab-example",
+          "namespace": "gitlab",
+          "labels": {
+            "app": "gitlab-example"
+          }
+        },
+        "spec": {
+          "selector": {
+            "app": "gitlab-example"
+          }
+        }
+      }
+    },
+    {
+      "id": "k8s/Service/iam/authentik-server",
+      "label": "authentik-server",
+      "kind": "kubernetes_service",
+      "domain": "deployments_k8s",
+      "summary": "authentik-server",
+      "primary_url": "https://kubernetes.cluster.example.org",
+      "drilldown_children": [],
+      "resource_kind": "Service",
+      "namespace": "iam",
+      "resource": {
+        "kind": "Service",
+        "metadata": {
+          "name": "authentik-server",
+          "namespace": "iam",
+          "labels": {
+            "app": "authentik-server"
+          }
+        },
+        "spec": {
+          "selector": {
+            "app": "authentik-server"
+          }
+        }
+      }
+    },
+    {
+      "id": "k8s/Service/iam/iam-example",
+      "label": "iam-example",
+      "kind": "kubernetes_service",
+      "domain": "deployments_k8s",
+      "summary": "iam-example",
+      "primary_url": "https://kubernetes.cluster.example.org",
+      "drilldown_children": [],
+      "resource_kind": "Service",
+      "namespace": "iam",
+      "resource": {
+        "kind": "Service",
+        "metadata": {
+          "name": "iam-example",
+          "namespace": "iam",
+          "labels": {
+            "app": "iam-example"
+          }
+        },
+        "spec": {
+          "selector": {
+            "app": "iam-example"
+          }
+        }
+      }
+    },
+    {
+      "id": "k8s/Service/iam/openbao-agent-injector",
+      "label": "openbao-agent-injector",
+      "kind": "kubernetes_service",
+      "domain": "deployments_k8s",
+      "summary": "openbao-agent-injector",
+      "primary_url": "https://kubernetes.cluster.example.org",
+      "drilldown_children": [],
+      "resource_kind": "Service",
+      "namespace": "iam",
+      "resource": {
+        "kind": "Service",
+        "metadata": {
+          "name": "openbao-agent-injector",
+          "namespace": "iam",
+          "labels": {
+            "app": "openbao-agent-injector"
+          }
+        },
+        "spec": {
+          "selector": {
+            "app": "openbao-agent-injector"
+          }
+        }
+      }
+    },
+    {
+      "id": "k8s/Service/ingress-nginx/ingress-nginx-controller",
+      "label": "ingress-nginx-controller",
+      "kind": "kubernetes_service",
+      "domain": "deployments_k8s",
+      "summary": "ingress-nginx-controller",
+      "primary_url": "https://kubernetes.cluster.example.org",
+      "drilldown_children": [],
+      "resource_kind": "Service",
+      "namespace": "ingress-nginx",
+      "resource": {
+        "kind": "Service",
+        "metadata": {
+          "name": "ingress-nginx-controller",
+          "namespace": "ingress-nginx",
+          "labels": {
+            "app": "ingress-nginx-controller"
+          }
+        },
+        "spec": {
+          "selector": {
+            "app": "ingress-nginx-controller"
+          }
+        }
+      }
+    },
+    {
+      "id": "k8s/Service/ingress-nginx/ingress-nginx-example",
+      "label": "ingress-nginx-example",
+      "kind": "kubernetes_service",
+      "domain": "deployments_k8s",
+      "summary": "ingress-nginx-example",
+      "primary_url": "https://kubernetes.cluster.example.org",
+      "drilldown_children": [],
+      "resource_kind": "Service",
+      "namespace": "ingress-nginx",
+      "resource": {
+        "kind": "Service",
+        "metadata": {
+          "name": "ingress-nginx-example",
+          "namespace": "ingress-nginx",
+          "labels": {
+            "app": "ingress-nginx-example"
+          }
+        },
+        "spec": {
+          "selector": {
+            "app": "ingress-nginx-example"
+          }
+        }
+      }
+    },
+    {
+      "id": "k8s/Service/kube-system/external-secrets",
+      "label": "external-secrets",
+      "kind": "kubernetes_service",
+      "domain": "deployments_k8s",
+      "summary": "external-secrets",
+      "primary_url": "https://kubernetes.cluster.example.org",
+      "drilldown_children": [],
+      "resource_kind": "Service",
+      "namespace": "kube-system",
+      "resource": {
+        "kind": "Service",
+        "metadata": {
+          "name": "external-secrets",
+          "namespace": "kube-system",
+          "labels": {
+            "app": "external-secrets"
+          }
+        },
+        "spec": {
+          "selector": {
+            "app": "external-secrets"
+          }
+        }
+      }
+    },
+    {
+      "id": "k8s/Service/kube-system/kube-system-example",
+      "label": "kube-system-example",
+      "kind": "kubernetes_service",
+      "domain": "deployments_k8s",
+      "summary": "kube-system-example",
+      "primary_url": "https://kubernetes.cluster.example.org",
+      "drilldown_children": [],
+      "resource_kind": "Service",
+      "namespace": "kube-system",
+      "resource": {
+        "kind": "Service",
+        "metadata": {
+          "name": "kube-system-example",
+          "namespace": "kube-system",
+          "labels": {
+            "app": "kube-system-example"
+          }
+        },
+        "spec": {
+          "selector": {
+            "app": "kube-system-example"
+          }
+        }
+      }
+    },
+    {
+      "id": "k8s/Service/monitoring/kube-prometheus-stack-grafana",
+      "label": "kube-prometheus-stack-grafana",
+      "kind": "kubernetes_service",
+      "domain": "deployments_k8s",
+      "summary": "kube-prometheus-stack-grafana",
+      "primary_url": "https://kubernetes.cluster.example.org",
+      "drilldown_children": [],
+      "resource_kind": "Service",
+      "namespace": "monitoring",
+      "resource": {
+        "kind": "Service",
+        "metadata": {
+          "name": "kube-prometheus-stack-grafana",
+          "namespace": "monitoring",
+          "labels": {
+            "app": "kube-prometheus-stack-grafana"
+          }
+        },
+        "spec": {
+          "selector": {
+            "app": "kube-prometheus-stack-grafana"
+          }
+        }
+      }
+    },
+    {
+      "id": "k8s/Service/monitoring/monitoring-example",
+      "label": "monitoring-example",
+      "kind": "kubernetes_service",
+      "domain": "deployments_k8s",
+      "summary": "monitoring-example",
+      "primary_url": "https://kubernetes.cluster.example.org",
+      "drilldown_children": [],
+      "resource_kind": "Service",
+      "namespace": "monitoring",
+      "resource": {
+        "kind": "Service",
+        "metadata": {
+          "name": "monitoring-example",
+          "namespace": "monitoring",
+          "labels": {
+            "app": "monitoring-example"
+          }
+        },
+        "spec": {
+          "selector": {
+            "app": "monitoring-example"
+          }
+        }
+      }
+    },
+    {
+      "id": "k8s/Service/security/defectdojo",
+      "label": "defectdojo",
+      "kind": "kubernetes_service",
+      "domain": "deployments_k8s",
+      "summary": "defectdojo",
+      "primary_url": "https://kubernetes.cluster.example.org",
+      "drilldown_children": [],
+      "resource_kind": "Service",
+      "namespace": "security",
+      "resource": {
+        "kind": "Service",
+        "metadata": {
+          "name": "defectdojo",
+          "namespace": "security",
+          "labels": {
+            "app": "defectdojo"
+          }
+        },
+        "spec": {
+          "selector": {
+            "app": "defectdojo"
+          }
+        }
+      }
+    },
+    {
+      "id": "k8s/Service/security/trivy",
+      "label": "trivy",
+      "kind": "kubernetes_service",
+      "domain": "deployments_k8s",
+      "summary": "trivy",
+      "primary_url": "https://kubernetes.cluster.example.org",
+      "drilldown_children": [],
+      "resource_kind": "Service",
+      "namespace": "security",
+      "resource": {
+        "kind": "Service",
+        "metadata": {
+          "name": "trivy",
+          "namespace": "security",
+          "labels": {
+            "app": "trivy"
+          }
+        },
+        "spec": {
+          "selector": {
+            "app": "trivy"
+          }
+        }
+      }
+    },
+    {
+      "id": "k8s/Service/security/trivy-operator",
+      "label": "trivy-operator",
+      "kind": "kubernetes_service",
+      "domain": "deployments_k8s",
+      "summary": "trivy-operator",
+      "primary_url": "https://kubernetes.cluster.example.org",
+      "drilldown_children": [],
+      "resource_kind": "Service",
+      "namespace": "security",
+      "resource": {
+        "kind": "Service",
+        "metadata": {
+          "name": "trivy-operator",
+          "namespace": "security",
+          "labels": {
+            "app": "trivy-operator"
+          }
+        },
+        "spec": {
+          "selector": {
+            "app": "trivy-operator"
+          }
+        }
+      }
+    },
+    {
+      "id": "k8s/Service/storage-system/storage-system-example",
+      "label": "storage-system-example",
+      "kind": "kubernetes_service",
+      "domain": "deployments_k8s",
+      "summary": "storage-system-example",
+      "primary_url": "https://kubernetes.cluster.example.org",
+      "drilldown_children": [],
+      "resource_kind": "Service",
+      "namespace": "storage-system",
+      "resource": {
+        "kind": "Service",
+        "metadata": {
+          "name": "storage-system-example",
+          "namespace": "storage-system",
+          "labels": {
+            "app": "storage-system-example"
+          }
+        },
+        "spec": {
+          "selector": {
+            "app": "storage-system-example"
+          }
+        }
+      }
+    },
+    {
+      "id": "k8s/Service/storage-system/zfs-nfs-driver-democratic-csi-controller",
+      "label": "zfs-nfs-driver-democratic-csi-controller",
+      "kind": "kubernetes_service",
+      "domain": "deployments_k8s",
+      "summary": "zfs-nfs-driver-democratic-csi-controller",
+      "primary_url": "https://kubernetes.cluster.example.org",
+      "drilldown_children": [],
+      "resource_kind": "Service",
+      "namespace": "storage-system",
+      "resource": {
+        "kind": "Service",
+        "metadata": {
+          "name": "zfs-nfs-driver-democratic-csi-controller",
+          "namespace": "storage-system",
+          "labels": {
+            "app": "zfs-nfs-driver-democratic-csi-controller"
+          }
+        },
+        "spec": {
+          "selector": {
+            "app": "zfs-nfs-driver-democratic-csi-controller"
+          }
+        }
+      }
+    },
+    {
+      "id": "kb-db-001",
+      "label": "KB-DB-001: How 2 Database \u2014 Deploy PostgreSQL via CloudNativePG & OpenBao",
+      "kind": "operational_process",
+      "domain": "processes_workflows",
+      "summary": "How 2 database / how to deploy a database: provision a PostgreSQL HA cluster via CloudNativePG (postgresql.cnpg.io/v1) on OpenZFS ZFS storage and inject credentials from OpenBao via ExternalSecret.",
+      "primary_url": "https://gitlab.cluster.example.org/platform/infra-gitops",
+      "drilldown_children": [
+        "k8s/Deployment/kube-system/external-secrets",
+        "k8s/Deployment/iam/openbao-agent-injector"
+      ],
+      "steps": [
+        "Open ticket IT-PLAT-GP-01 (Golden Path database provisioning) and IT-SEC-DB-01 (OpenBao secret path registration).",
+        "Create a postgresql.cnpg.io/v1 Cluster manifest with instances: 2 and storageClass: openzfs-iscsi-csi.",
+        "Create an external-secrets.io/v1beta1 ExternalSecret pointing to secret/data/<namespace>/<app>-db in OpenBao.",
+        "Annotate your application Deployment with reloader.stakater.com/auto: \"true\" and deploy via the Golden Path deploy-gitops@main component."
+      ]
+    },
+    {
+      "id": "kb-gp-002",
+      "label": "KB-GP-002: How 2 Spin Up a 3-Tier Golden Path Project",
+      "kind": "operational_process",
+      "domain": "processes_workflows",
+      "summary": "How 2 new project / CI/CD pipeline: scaffold a 3-tier application using GitLab CI/CD Golden Path components and ArgoCD GitOps sync.",
+      "primary_url": "https://gitlab.cluster.example.org/platform/infra-gitops",
+      "drilldown_children": [
+        "k8s/Deployment/gitlab/gitlab",
+        "k8s/Deployment/argocd/argocd-server"
+      ],
+      "steps": [
+        "Request ticket IT-DEMO-GP-01 / IT-PLAT-GP-01 for Golden Path repository intake.",
+        "Include gitlab.cluster.example.org/devops/components/golden-path/pipeline@main in .gitlab-ci.yml (never raw script blocks).",
+        "Push a feature branch and use the GitLab compare link for human MR review."
+      ]
+    },
+    {
+      "id": "kb-game-003",
+      "label": "KB-GAME-003: How 2 Debug Game Servers (Minecraft / Factorio / Satisfactory)",
+      "kind": "operational_process",
+      "domain": "processes_workflows",
+      "summary": "How 2 game server debugging: isolate Pod readiness (Layer 1), .cluster.example.org LAN DNS (Layer 2), and client GPU/APU (Layer 3) with Grafana and RunbookGate.",
+      "primary_url": "https://gitlab.cluster.example.org/platform/infra-gitops",
+      "drilldown_children": [
+        "k8s/Deployment/monitoring/kube-prometheus-stack-grafana",
+        "k8s/Deployment/game-servers/minecraft"
+      ],
+      "steps": [
+        "Check game-servers Deployment and Pod readiness (minecraft-survival, minecraft-creative, factorio, satisfactory).",
+        "Open https://grafana.cluster.example.org/dashboards and /games to inspect server tick time, container restarts, and host load.",
+        "Verify OpenZFS ZFS NFS persistent volume health before running an approved RunbookGate restart runbook."
+      ]
+    },
+    {
+      "id": "kb-dns-004",
+      "label": "KB-DNS-004: How 2 Fix .cluster.example.org LAN DNS & NGINX Ingress",
+      "kind": "operational_process",
+      "domain": "processes_workflows",
+      "summary": "How 2 DNS / ingress: verify NGINX Ingress controller routing, TLS certificates, and AdGuard/Unbound split-horizon DNS for *.cluster.example.org.",
+      "primary_url": "https://gitlab.cluster.example.org/platform/infra-gitops",
+      "drilldown_children": [
+        "k8s/Deployment/ingress-nginx/ingress-nginx-controller"
+      ],
+      "steps": [
+        "Compare direct RFC 1918 LAN IP reachability against the .cluster.example.org hostname.",
+        "Verify CoreDNS and ingress-nginx-controller pods are Ready and check TLS certificates in cert-manager."
+      ]
+    },
+    {
+      "id": "kb-gpu-005",
+      "label": "KB-GPU-005: How 2 Debug GPU / APU & Local LLM Inference",
+      "kind": "operational_process",
+      "domain": "processes_workflows",
+      "summary": "How 2 GPU / FPS / Ollama: inspect hardware GPU/APU utilization across nodegamma03, nodebeta02, and nodealpha01.",
+      "primary_url": "https://gitlab.cluster.example.org/platform/infra-gitops",
+      "drilldown_children": [
+        "k8s/Deployment/ai-infra/ollama"
+      ],
+      "steps": [
+        "Compare frame times on a second client to isolate local GPU/APU-200 APU thermal throttling from server lag.",
+        "Check competing Ollama GPU worker reservations in ai-infra before switching the GPU profile."
+      ]
+    },
+    {
+      "id": "kb-ops-006",
+      "label": "KB-OPS-006: How 2 Triage Cluster Health, Node Hotspots & Failed Pods",
+      "kind": "operational_process",
+      "domain": "processes_workflows",
+      "summary": "How 2 cluster health: inspect node readiness, CPU/RAM hotspots, failed GitLab runner pods, and degraded deployments.",
+      "primary_url": "https://gitlab.cluster.example.org/platform/infra-gitops",
+      "drilldown_children": [
+        "k8s/Deployment/monitoring/kube-prometheus-stack-grafana"
+      ],
+      "steps": [
+        "Inspect NotReady node conditions on nodebeta02 and review N-1 drain simulation in /capacity.",
+        "Review failed concurrent runner pods in the gitlab namespace and check active SEV incidents in /incidents."
+      ]
+    },
+    {
+      "id": "kb-stor-007",
+      "label": "KB-STOR-007: How 2 Storage \u2014 OpenZFS ZFS, Democratic-CSI & SeaweedFS",
+      "kind": "operational_process",
+      "domain": "processes_workflows",
+      "summary": "How 2 storage / PVC: provision PersistentVolumeClaims via democratic-csi (zfs-nfs RWX or openzfs-iscsi-csi RWO) and SeaweedFS S3 buckets.",
+      "primary_url": "https://gitlab.cluster.example.org/platform/infra-gitops",
+      "drilldown_children": [],
+      "steps": [
+        "Select openzfs-iscsi-csi for RWO block workloads (PostgreSQL/CNPG) or zfs-nfs for shared RWX directories.",
+        "Declare a PersistentVolumeClaim in your Golden Path Helm/Kustomize manifest and verify Bound status.",
+        "For S3 object storage, request a bucket path on SeaweedFS (storage namespace) via OpenBao ExternalSecret."
+      ]
+    },
+    {
+      "id": "kb-iam-008",
+      "label": "KB-IAM-008: How 2 Auth / SSO \u2014 Authentik OIDC & OpenBao ExternalSecrets",
+      "kind": "operational_process",
+      "domain": "processes_workflows",
+      "summary": "How 2 auth / SSO / OIDC: protect *.cluster.example.org ingresses with Authentik OAuth2/OIDC providers and OpenBao ExternalSecret credentials.",
+      "primary_url": "https://gitlab.cluster.example.org/platform/infra-gitops",
+      "drilldown_children": [
+        "k8s/Deployment/iam/authentik-server",
+        "k8s/Deployment/iam/openbao-agent-injector"
+      ],
+      "steps": [
+        "Register an OAuth2/OIDC Provider and Application in Authentik (iam namespace) and bind group RBAC.",
+        "Add nginx.ingress.kubernetes.io/auth-url annotations for forward-auth or configure native OIDC client ID via ExternalSecret.",
+        "Verify pod security context compliance (runAsNonRoot: true, readOnlyRootFilesystem: true, drop: [ALL])."
+      ]
+    },
+    {
+      "id": "kb-gitops-009",
+      "label": "KB-GITOPS-009: How 2 GitOps \u2014 ArgoCD Sync & Drift Recovery",
+      "kind": "operational_process",
+      "domain": "processes_workflows",
+      "summary": "How 2 GitOps / ArgoCD: resolve OutOfSync or Degraded ArgoCD applications and verify Renovate dependency updates.",
+      "primary_url": "https://gitlab.cluster.example.org/platform/infra-gitops",
+      "drilldown_children": [
+        "k8s/Deployment/argocd/argocd-server"
+      ],
+      "steps": [
+        "Push changes on a feature branch with lowercase Conventional Commits and pass the 6-gate CI pipeline.",
+        "Open the GitLab compare link for human review and merge to main.",
+        "Verify ArgoCD Application sync status at https://argocd.cluster.example.org and monitor pod rollout."
+      ]
+    },
+    {
+      "id": "k8s/Pod/gitlab/runner-job-demo-failed",
+      "label": "runner-job-demo-failed",
+      "kind": "kubernetes_pod",
+      "domain": "deployments_k8s",
+      "summary": "runner-job-demo-failed",
+      "primary_url": "https://kubernetes.cluster.example.org",
+      "drilldown_children": [],
+      "resource_kind": "Pod",
+      "namespace": "gitlab",
+      "resource": {
+        "kind": "Pod",
+        "metadata": {
+          "name": "runner-job-demo-failed",
+          "namespace": "gitlab",
+          "labels": {
+            "app": "gitlab-example"
+          }
+        },
+        "spec": {
+          "nodeName": "nodealpha01",
+          "containers": [
+            {
+              "name": "runner-job",
+              "resources": {
+                "requests": {
+                  "cpu": "10m",
+                  "memory": "16Mi"
+                },
+                "limits": {
+                  "cpu": "500m",
+                  "memory": "512Mi"
+                }
+              },
+              "securityContext": {
+                "runAsNonRoot": true,
+                "runAsUser": 10000,
+                "readOnlyRootFilesystem": true,
+                "allowPrivilegeEscalation": false,
+                "capabilities": {
+                  "drop": [
+                    "ALL"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        "status": {
+          "phase": "Failed"
+        }
+      }
+    },
+    {
+      "id": "k8s/Namespace//ai-sandbox",
+      "label": "ai-sandbox",
+      "kind": "kubernetes_namespace",
+      "domain": "deployments_k8s",
+      "summary": "ai-sandbox",
+      "primary_url": "https://kubernetes.cluster.example.org",
+      "drilldown_children": [
+        "k8s/Deployment/ai-sandbox/sandbox-worker"
+      ],
+      "resource_kind": "Namespace",
+      "resource": {
+        "kind": "Namespace",
+        "metadata": {
+          "name": "ai-sandbox"
+        }
+      }
+    },
+    {
+      "id": "k8s/Deployment/ai-sandbox/sandbox-worker",
+      "label": "sandbox-worker",
+      "kind": "kubernetes_deployment",
+      "domain": "deployments_k8s",
+      "summary": "sandbox-worker",
+      "primary_url": "https://kubernetes.cluster.example.org",
+      "drilldown_children": [],
+      "resource_kind": "Deployment",
+      "namespace": "ai-sandbox",
+      "resource": {
+        "kind": "Deployment",
+        "metadata": {
+          "name": "sandbox-worker",
+          "namespace": "ai-sandbox",
+          "labels": {
+            "app": "sandbox-worker"
+          }
+        },
+        "spec": {
+          "replicas": 1,
+          "template": {
+            "spec": {
+              "containers": [
+                {
+                  "name": "sandbox-worker",
+                  "resources": {
+                    "requests": {
+                      "cpu": "10m",
+                      "memory": "16Mi"
+                    },
+                    "limits": {
+                      "cpu": "500m",
+                      "memory": "512Mi"
+                    }
+                  },
+                  "securityContext": {
+                    "runAsNonRoot": true,
+                    "runAsUser": 10000,
+                    "readOnlyRootFilesystem": true,
+                    "allowPrivilegeEscalation": false,
+                    "capabilities": {
+                      "drop": [
+                        "ALL"
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        "status": {
+          "readyReplicas": 1
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "source": "k8s/Namespace//ai-infra",
+      "target": "k8s/Deployment/ai-infra/ollama",
+      "relation": "contains"
+    },
+    {
+      "source": "k8s/Namespace//argocd",
+      "target": "k8s/Deployment/argocd/argocd-example",
+      "relation": "contains"
+    },
+    {
+      "source": "k8s/Namespace//argocd",
+      "target": "k8s/Deployment/argocd/argocd-server",
+      "relation": "contains"
+    },
+    {
+      "source": "k8s/Namespace//default",
+      "target": "k8s/Deployment/default/default-example",
+      "relation": "contains"
+    },
+    {
+      "source": "k8s/Namespace//dev-envs",
+      "target": "k8s/Deployment/dev-envs/argon",
+      "relation": "contains"
+    },
+    {
+      "source": "k8s/Namespace//game-servers",
+      "target": "k8s/Deployment/game-servers/factorio",
+      "relation": "contains"
+    },
+    {
+      "source": "k8s/Namespace//game-servers",
+      "target": "k8s/Deployment/game-servers/minecraft",
+      "relation": "contains"
+    },
+    {
+      "source": "k8s/Namespace//gitlab",
+      "target": "k8s/Deployment/gitlab/gitlab",
+      "relation": "contains"
+    },
+    {
+      "source": "k8s/Namespace//gitlab",
+      "target": "k8s/Deployment/gitlab/gitlab-example",
+      "relation": "contains"
+    },
+    {
+      "source": "k8s/Namespace//iam",
+      "target": "k8s/Deployment/iam/authentik-server",
+      "relation": "contains"
+    },
+    {
+      "source": "k8s/Namespace//iam",
+      "target": "k8s/Deployment/iam/iam-example",
+      "relation": "contains"
+    },
+    {
+      "source": "k8s/Namespace//iam",
+      "target": "k8s/Deployment/iam/openbao-agent-injector",
+      "relation": "contains"
+    },
+    {
+      "source": "k8s/Namespace//ingress-nginx",
+      "target": "k8s/Deployment/ingress-nginx/ingress-nginx-controller",
+      "relation": "contains"
+    },
+    {
+      "source": "k8s/Namespace//ingress-nginx",
+      "target": "k8s/Deployment/ingress-nginx/ingress-nginx-example",
+      "relation": "contains"
+    },
+    {
+      "source": "k8s/Namespace//kube-system",
+      "target": "k8s/Deployment/kube-system/external-secrets",
+      "relation": "contains"
+    },
+    {
+      "source": "k8s/Namespace//kube-system",
+      "target": "k8s/Deployment/kube-system/kube-system-example",
+      "relation": "contains"
+    },
+    {
+      "source": "k8s/Namespace//monitoring",
+      "target": "k8s/Deployment/monitoring/kube-prometheus-stack-grafana",
+      "relation": "contains"
+    },
+    {
+      "source": "k8s/Namespace//monitoring",
+      "target": "k8s/Deployment/monitoring/monitoring-example",
+      "relation": "contains"
+    },
+    {
+      "source": "k8s/Namespace//security",
+      "target": "k8s/Deployment/security/defectdojo",
+      "relation": "contains"
+    },
+    {
+      "source": "k8s/Namespace//security",
+      "target": "k8s/Deployment/security/trivy",
+      "relation": "contains"
+    },
+    {
+      "source": "k8s/Namespace//security",
+      "target": "k8s/Deployment/security/trivy-operator",
+      "relation": "contains"
+    },
+    {
+      "source": "k8s/Namespace//storage-system",
+      "target": "k8s/Deployment/storage-system/storage-system-example",
+      "relation": "contains"
+    },
+    {
+      "source": "k8s/Namespace//storage-system",
+      "target": "k8s/Deployment/storage-system/zfs-nfs-driver-democratic-csi-controller",
+      "relation": "contains"
+    },
+    {
+      "source": "k8s/Namespace//ai-infra",
+      "target": "k8s/Ingress/ai-infra/ollama",
+      "relation": "contains"
+    },
+    {
+      "source": "k8s/Ingress/ai-infra/ollama",
+      "target": "k8s/Service/ai-infra/ollama",
+      "relation": "routes_to"
+    },
+    {
+      "source": "k8s/Namespace//argocd",
+      "target": "k8s/Ingress/argocd/argocd-example",
+      "relation": "contains"
+    },
+    {
+      "source": "k8s/Ingress/argocd/argocd-example",
+      "target": "k8s/Service/argocd/argocd-example",
+      "relation": "routes_to"
+    },
+    {
+      "source": "k8s/Namespace//default",
+      "target": "k8s/Ingress/default/default-example",
+      "relation": "contains"
+    },
+    {
+      "source": "k8s/Ingress/default/default-example",
+      "target": "k8s/Service/default/default-example",
+      "relation": "routes_to"
+    },
+    {
+      "source": "k8s/Namespace//dev-envs",
+      "target": "k8s/Ingress/dev-envs/argon",
+      "relation": "contains"
+    },
+    {
+      "source": "k8s/Ingress/dev-envs/argon",
+      "target": "k8s/Service/dev-envs/argon",
+      "relation": "routes_to"
+    },
+    {
+      "source": "k8s/Namespace//game-servers",
+      "target": "k8s/Ingress/game-servers/factorio",
+      "relation": "contains"
+    },
+    {
+      "source": "k8s/Ingress/game-servers/factorio",
+      "target": "k8s/Service/game-servers/factorio",
+      "relation": "routes_to"
+    },
+    {
+      "source": "k8s/Namespace//gitlab",
+      "target": "k8s/Ingress/gitlab/gitlab-example",
+      "relation": "contains"
+    },
+    {
+      "source": "k8s/Ingress/gitlab/gitlab-example",
+      "target": "k8s/Service/gitlab/gitlab-example",
+      "relation": "routes_to"
+    },
+    {
+      "source": "k8s/Namespace//iam",
+      "target": "k8s/Ingress/iam/iam-example",
+      "relation": "contains"
+    },
+    {
+      "source": "k8s/Ingress/iam/iam-example",
+      "target": "k8s/Service/iam/iam-example",
+      "relation": "routes_to"
+    },
+    {
+      "source": "k8s/Namespace//ingress-nginx",
+      "target": "k8s/Ingress/ingress-nginx/ingress-nginx-example",
+      "relation": "contains"
+    },
+    {
+      "source": "k8s/Ingress/ingress-nginx/ingress-nginx-example",
+      "target": "k8s/Service/ingress-nginx/ingress-nginx-example",
+      "relation": "routes_to"
+    },
+    {
+      "source": "k8s/Namespace//kube-system",
+      "target": "k8s/Ingress/kube-system/kube-system-example",
+      "relation": "contains"
+    },
+    {
+      "source": "k8s/Ingress/kube-system/kube-system-example",
+      "target": "k8s/Service/kube-system/kube-system-example",
+      "relation": "routes_to"
+    },
+    {
+      "source": "k8s/Namespace//monitoring",
+      "target": "k8s/Ingress/monitoring/monitoring-example",
+      "relation": "contains"
+    },
+    {
+      "source": "k8s/Ingress/monitoring/monitoring-example",
+      "target": "k8s/Service/monitoring/monitoring-example",
+      "relation": "routes_to"
+    },
+    {
+      "source": "k8s/Namespace//security",
+      "target": "k8s/Ingress/security/defectdojo",
+      "relation": "contains"
+    },
+    {
+      "source": "k8s/Ingress/security/defectdojo",
+      "target": "k8s/Service/security/defectdojo",
+      "relation": "routes_to"
+    },
+    {
+      "source": "k8s/Namespace//storage-system",
+      "target": "k8s/Ingress/storage-system/storage-system-example",
+      "relation": "contains"
+    },
+    {
+      "source": "k8s/Ingress/storage-system/storage-system-example",
+      "target": "k8s/Service/storage-system/storage-system-example",
+      "relation": "routes_to"
+    },
+    {
+      "source": "cluster-home",
+      "target": "k8s/Namespace//ai-infra",
+      "relation": "contains"
+    },
+    {
+      "source": "cluster-home",
+      "target": "k8s/Namespace//argocd",
+      "relation": "contains"
+    },
+    {
+      "source": "cluster-home",
+      "target": "k8s/Namespace//default",
+      "relation": "contains"
+    },
+    {
+      "source": "cluster-home",
+      "target": "k8s/Namespace//dev-envs",
+      "relation": "contains"
+    },
+    {
+      "source": "cluster-home",
+      "target": "k8s/Namespace//game-servers",
+      "relation": "contains"
+    },
+    {
+      "source": "cluster-home",
+      "target": "k8s/Namespace//gitlab",
+      "relation": "contains"
+    },
+    {
+      "source": "cluster-home",
+      "target": "k8s/Namespace//iam",
+      "relation": "contains"
+    },
+    {
+      "source": "cluster-home",
+      "target": "k8s/Namespace//ingress-nginx",
+      "relation": "contains"
+    },
+    {
+      "source": "cluster-home",
+      "target": "k8s/Namespace//kube-system",
+      "relation": "contains"
+    },
+    {
+      "source": "cluster-home",
+      "target": "k8s/Namespace//monitoring",
+      "relation": "contains"
+    },
+    {
+      "source": "cluster-home",
+      "target": "k8s/Namespace//security",
+      "relation": "contains"
+    },
+    {
+      "source": "cluster-home",
+      "target": "k8s/Namespace//storage-system",
+      "relation": "contains"
+    },
+    {
+      "source": "cluster-home",
+      "target": "k8s/Node//nodealpha01",
+      "relation": "contains"
+    },
+    {
+      "source": "cluster-home",
+      "target": "k8s/Node//nodebeta02",
+      "relation": "contains"
+    },
+    {
+      "source": "cluster-home",
+      "target": "k8s/Node//nodegamma03",
+      "relation": "contains"
+    },
+    {
+      "source": "k8s/Namespace//ai-infra",
+      "target": "k8s/Pod/ai-infra/ollama-pod",
+      "relation": "contains"
+    },
+    {
+      "source": "k8s/Pod/ai-infra/ollama-pod",
+      "target": "k8s/Node//nodealpha01",
+      "relation": "runs_on_hardware"
+    },
+    {
+      "source": "k8s/Namespace//argocd",
+      "target": "k8s/Pod/argocd/argocd-example-pod",
+      "relation": "contains"
+    },
+    {
+      "source": "k8s/Pod/argocd/argocd-example-pod",
+      "target": "k8s/Node//nodegamma03",
+      "relation": "runs_on_hardware"
+    },
+    {
+      "source": "k8s/Namespace//argocd",
+      "target": "k8s/Pod/argocd/argocd-server-pod",
+      "relation": "contains"
+    },
+    {
+      "source": "k8s/Pod/argocd/argocd-server-pod",
+      "target": "k8s/Node//nodebeta02",
+      "relation": "runs_on_hardware"
+    },
+    {
+      "source": "k8s/Namespace//default",
+      "target": "k8s/Pod/default/default-example-pod",
+      "relation": "contains"
+    },
+    {
+      "source": "k8s/Pod/default/default-example-pod",
+      "target": "k8s/Node//nodebeta02",
+      "relation": "runs_on_hardware"
+    },
+    {
+      "source": "k8s/Namespace//dev-envs",
+      "target": "k8s/Pod/dev-envs/argon-pod",
+      "relation": "contains"
+    },
+    {
+      "source": "k8s/Pod/dev-envs/argon-pod",
+      "target": "k8s/Node//nodebeta02",
+      "relation": "runs_on_hardware"
+    },
+    {
+      "source": "k8s/Namespace//game-servers",
+      "target": "k8s/Pod/game-servers/factorio-pod",
+      "relation": "contains"
+    },
+    {
+      "source": "k8s/Pod/game-servers/factorio-pod",
+      "target": "k8s/Node//nodegamma03",
+      "relation": "runs_on_hardware"
+    },
+    {
+      "source": "k8s/Namespace//game-servers",
+      "target": "k8s/Pod/game-servers/minecraft-pod",
+      "relation": "contains"
+    },
+    {
+      "source": "k8s/Pod/game-servers/minecraft-pod",
+      "target": "k8s/Node//nodegamma03",
+      "relation": "runs_on_hardware"
+    },
+    {
+      "source": "k8s/Namespace//gitlab",
+      "target": "k8s/Pod/gitlab/gitlab-example-pod",
+      "relation": "contains"
+    },
+    {
+      "source": "k8s/Pod/gitlab/gitlab-example-pod",
+      "target": "k8s/Node//nodebeta02",
+      "relation": "runs_on_hardware"
+    },
+    {
+      "source": "k8s/Namespace//gitlab",
+      "target": "k8s/Pod/gitlab/gitlab-pod",
+      "relation": "contains"
+    },
+    {
+      "source": "k8s/Pod/gitlab/gitlab-pod",
+      "target": "k8s/Node//nodealpha01",
+      "relation": "runs_on_hardware"
+    },
+    {
+      "source": "k8s/Namespace//iam",
+      "target": "k8s/Pod/iam/authentik-server-pod",
+      "relation": "contains"
+    },
+    {
+      "source": "k8s/Pod/iam/authentik-server-pod",
+      "target": "k8s/Node//nodebeta02",
+      "relation": "runs_on_hardware"
+    },
+    {
+      "source": "k8s/Namespace//iam",
+      "target": "k8s/Pod/iam/iam-example-pod",
+      "relation": "contains"
+    },
+    {
+      "source": "k8s/Pod/iam/iam-example-pod",
+      "target": "k8s/Node//nodebeta02",
+      "relation": "runs_on_hardware"
+    },
+    {
+      "source": "k8s/Namespace//iam",
+      "target": "k8s/Pod/iam/openbao-agent-injector-pod",
+      "relation": "contains"
+    },
+    {
+      "source": "k8s/Pod/iam/openbao-agent-injector-pod",
+      "target": "k8s/Node//nodealpha01",
+      "relation": "runs_on_hardware"
+    },
+    {
+      "source": "k8s/Namespace//ingress-nginx",
+      "target": "k8s/Pod/ingress-nginx/ingress-nginx-controller-pod",
+      "relation": "contains"
+    },
+    {
+      "source": "k8s/Pod/ingress-nginx/ingress-nginx-controller-pod",
+      "target": "k8s/Node//nodealpha01",
+      "relation": "runs_on_hardware"
+    },
+    {
+      "source": "k8s/Namespace//ingress-nginx",
+      "target": "k8s/Pod/ingress-nginx/ingress-nginx-example-pod",
+      "relation": "contains"
+    },
+    {
+      "source": "k8s/Pod/ingress-nginx/ingress-nginx-example-pod",
+      "target": "k8s/Node//nodegamma03",
+      "relation": "runs_on_hardware"
+    },
+    {
+      "source": "k8s/Namespace//kube-system",
+      "target": "k8s/Pod/kube-system/external-secrets-pod",
+      "relation": "contains"
+    },
+    {
+      "source": "k8s/Pod/kube-system/external-secrets-pod",
+      "target": "k8s/Node//nodealpha01",
+      "relation": "runs_on_hardware"
+    },
+    {
+      "source": "k8s/Namespace//kube-system",
+      "target": "k8s/Pod/kube-system/kube-system-example-pod",
+      "relation": "contains"
+    },
+    {
+      "source": "k8s/Pod/kube-system/kube-system-example-pod",
+      "target": "k8s/Node//nodealpha01",
+      "relation": "runs_on_hardware"
+    },
+    {
+      "source": "k8s/Namespace//monitoring",
+      "target": "k8s/Pod/monitoring/kube-prometheus-stack-grafana-pod",
+      "relation": "contains"
+    },
+    {
+      "source": "k8s/Pod/monitoring/kube-prometheus-stack-grafana-pod",
+      "target": "k8s/Node//nodealpha01",
+      "relation": "runs_on_hardware"
+    },
+    {
+      "source": "k8s/Namespace//monitoring",
+      "target": "k8s/Pod/monitoring/monitoring-example-pod",
+      "relation": "contains"
+    },
+    {
+      "source": "k8s/Pod/monitoring/monitoring-example-pod",
+      "target": "k8s/Node//nodealpha01",
+      "relation": "runs_on_hardware"
+    },
+    {
+      "source": "k8s/Namespace//security",
+      "target": "k8s/Pod/security/defectdojo-pod",
+      "relation": "contains"
+    },
+    {
+      "source": "k8s/Pod/security/defectdojo-pod",
+      "target": "k8s/Node//nodealpha01",
+      "relation": "runs_on_hardware"
+    },
+    {
+      "source": "k8s/Namespace//security",
+      "target": "k8s/Pod/security/trivy-operator-pod",
+      "relation": "contains"
+    },
+    {
+      "source": "k8s/Pod/security/trivy-operator-pod",
+      "target": "k8s/Node//nodebeta02",
+      "relation": "runs_on_hardware"
+    },
+    {
+      "source": "k8s/Namespace//security",
+      "target": "k8s/Pod/security/trivy-pod",
+      "relation": "contains"
+    },
+    {
+      "source": "k8s/Pod/security/trivy-pod",
+      "target": "k8s/Node//nodebeta02",
+      "relation": "runs_on_hardware"
+    },
+    {
+      "source": "k8s/Namespace//storage-system",
+      "target": "k8s/Pod/storage-system/storage-system-example-pod",
+      "relation": "contains"
+    },
+    {
+      "source": "k8s/Pod/storage-system/storage-system-example-pod",
+      "target": "k8s/Node//nodegamma03",
+      "relation": "runs_on_hardware"
+    },
+    {
+      "source": "k8s/Namespace//storage-system",
+      "target": "k8s/Pod/storage-system/zfs-nfs-driver-democratic-csi-controller-pod",
+      "relation": "contains"
+    },
+    {
+      "source": "k8s/Pod/storage-system/zfs-nfs-driver-democratic-csi-controller-pod",
+      "target": "k8s/Node//nodegamma03",
+      "relation": "runs_on_hardware"
+    },
+    {
+      "source": "k8s/Namespace//ai-infra",
+      "target": "k8s/Service/ai-infra/ollama",
+      "relation": "contains"
+    },
+    {
+      "source": "k8s/Service/ai-infra/ollama",
+      "target": "k8s/Pod/ai-infra/ollama-pod",
+      "relation": "routes_to"
+    },
+    {
+      "source": "k8s/Namespace//argocd",
+      "target": "k8s/Service/argocd/argocd-example",
+      "relation": "contains"
+    },
+    {
+      "source": "k8s/Service/argocd/argocd-example",
+      "target": "k8s/Pod/argocd/argocd-example-pod",
+      "relation": "routes_to"
+    },
+    {
+      "source": "k8s/Namespace//argocd",
+      "target": "k8s/Service/argocd/argocd-server",
+      "relation": "contains"
+    },
+    {
+      "source": "k8s/Service/argocd/argocd-server",
+      "target": "k8s/Pod/argocd/argocd-server-pod",
+      "relation": "routes_to"
+    },
+    {
+      "source": "k8s/Namespace//default",
+      "target": "k8s/Service/default/default-example",
+      "relation": "contains"
+    },
+    {
+      "source": "k8s/Service/default/default-example",
+      "target": "k8s/Pod/default/default-example-pod",
+      "relation": "routes_to"
+    },
+    {
+      "source": "k8s/Namespace//dev-envs",
+      "target": "k8s/Service/dev-envs/argon",
+      "relation": "contains"
+    },
+    {
+      "source": "k8s/Service/dev-envs/argon",
+      "target": "k8s/Pod/dev-envs/argon-pod",
+      "relation": "routes_to"
+    },
+    {
+      "source": "k8s/Namespace//game-servers",
+      "target": "k8s/Service/game-servers/factorio",
+      "relation": "contains"
+    },
+    {
+      "source": "k8s/Service/game-servers/factorio",
+      "target": "k8s/Pod/game-servers/factorio-pod",
+      "relation": "routes_to"
+    },
+    {
+      "source": "k8s/Namespace//game-servers",
+      "target": "k8s/Service/game-servers/minecraft",
+      "relation": "contains"
+    },
+    {
+      "source": "k8s/Service/game-servers/minecraft",
+      "target": "k8s/Pod/game-servers/minecraft-pod",
+      "relation": "routes_to"
+    },
+    {
+      "source": "k8s/Namespace//gitlab",
+      "target": "k8s/Service/gitlab/gitlab",
+      "relation": "contains"
+    },
+    {
+      "source": "k8s/Service/gitlab/gitlab",
+      "target": "k8s/Pod/gitlab/gitlab-pod",
+      "relation": "routes_to"
+    },
+    {
+      "source": "k8s/Namespace//gitlab",
+      "target": "k8s/Service/gitlab/gitlab-example",
+      "relation": "contains"
+    },
+    {
+      "source": "k8s/Service/gitlab/gitlab-example",
+      "target": "k8s/Pod/gitlab/gitlab-example-pod",
+      "relation": "routes_to"
+    },
+    {
+      "source": "k8s/Namespace//iam",
+      "target": "k8s/Service/iam/authentik-server",
+      "relation": "contains"
+    },
+    {
+      "source": "k8s/Service/iam/authentik-server",
+      "target": "k8s/Pod/iam/authentik-server-pod",
+      "relation": "routes_to"
+    },
+    {
+      "source": "k8s/Namespace//iam",
+      "target": "k8s/Service/iam/iam-example",
+      "relation": "contains"
+    },
+    {
+      "source": "k8s/Service/iam/iam-example",
+      "target": "k8s/Pod/iam/iam-example-pod",
+      "relation": "routes_to"
+    },
+    {
+      "source": "k8s/Namespace//iam",
+      "target": "k8s/Service/iam/openbao-agent-injector",
+      "relation": "contains"
+    },
+    {
+      "source": "k8s/Service/iam/openbao-agent-injector",
+      "target": "k8s/Pod/iam/openbao-agent-injector-pod",
+      "relation": "routes_to"
+    },
+    {
+      "source": "k8s/Namespace//ingress-nginx",
+      "target": "k8s/Service/ingress-nginx/ingress-nginx-controller",
+      "relation": "contains"
+    },
+    {
+      "source": "k8s/Service/ingress-nginx/ingress-nginx-controller",
+      "target": "k8s/Pod/ingress-nginx/ingress-nginx-controller-pod",
+      "relation": "routes_to"
+    },
+    {
+      "source": "k8s/Namespace//ingress-nginx",
+      "target": "k8s/Service/ingress-nginx/ingress-nginx-example",
+      "relation": "contains"
+    },
+    {
+      "source": "k8s/Service/ingress-nginx/ingress-nginx-example",
+      "target": "k8s/Pod/ingress-nginx/ingress-nginx-example-pod",
+      "relation": "routes_to"
+    },
+    {
+      "source": "k8s/Namespace//kube-system",
+      "target": "k8s/Service/kube-system/external-secrets",
+      "relation": "contains"
+    },
+    {
+      "source": "k8s/Service/kube-system/external-secrets",
+      "target": "k8s/Pod/kube-system/external-secrets-pod",
+      "relation": "routes_to"
+    },
+    {
+      "source": "k8s/Namespace//kube-system",
+      "target": "k8s/Service/kube-system/kube-system-example",
+      "relation": "contains"
+    },
+    {
+      "source": "k8s/Service/kube-system/kube-system-example",
+      "target": "k8s/Pod/kube-system/kube-system-example-pod",
+      "relation": "routes_to"
+    },
+    {
+      "source": "k8s/Namespace//monitoring",
+      "target": "k8s/Service/monitoring/kube-prometheus-stack-grafana",
+      "relation": "contains"
+    },
+    {
+      "source": "k8s/Service/monitoring/kube-prometheus-stack-grafana",
+      "target": "k8s/Pod/monitoring/kube-prometheus-stack-grafana-pod",
+      "relation": "routes_to"
+    },
+    {
+      "source": "k8s/Namespace//monitoring",
+      "target": "k8s/Service/monitoring/monitoring-example",
+      "relation": "contains"
+    },
+    {
+      "source": "k8s/Service/monitoring/monitoring-example",
+      "target": "k8s/Pod/monitoring/monitoring-example-pod",
+      "relation": "routes_to"
+    },
+    {
+      "source": "k8s/Namespace//security",
+      "target": "k8s/Service/security/defectdojo",
+      "relation": "contains"
+    },
+    {
+      "source": "k8s/Service/security/defectdojo",
+      "target": "k8s/Pod/security/defectdojo-pod",
+      "relation": "routes_to"
+    },
+    {
+      "source": "k8s/Namespace//security",
+      "target": "k8s/Service/security/trivy",
+      "relation": "contains"
+    },
+    {
+      "source": "k8s/Service/security/trivy",
+      "target": "k8s/Pod/security/trivy-pod",
+      "relation": "routes_to"
+    },
+    {
+      "source": "k8s/Namespace//security",
+      "target": "k8s/Service/security/trivy-operator",
+      "relation": "contains"
+    },
+    {
+      "source": "k8s/Service/security/trivy-operator",
+      "target": "k8s/Pod/security/trivy-operator-pod",
+      "relation": "routes_to"
+    },
+    {
+      "source": "k8s/Namespace//storage-system",
+      "target": "k8s/Service/storage-system/storage-system-example",
+      "relation": "contains"
+    },
+    {
+      "source": "k8s/Service/storage-system/storage-system-example",
+      "target": "k8s/Pod/storage-system/storage-system-example-pod",
+      "relation": "routes_to"
+    },
+    {
+      "source": "k8s/Namespace//storage-system",
+      "target": "k8s/Service/storage-system/zfs-nfs-driver-democratic-csi-controller",
+      "relation": "contains"
+    },
+    {
+      "source": "k8s/Service/storage-system/zfs-nfs-driver-democratic-csi-controller",
+      "target": "k8s/Pod/storage-system/zfs-nfs-driver-democratic-csi-controller-pod",
+      "relation": "routes_to"
+    },
+    {
+      "source": "k8s/Namespace//iam",
+      "target": "kb-db-001",
+      "relation": "contains_runbook"
+    },
+    {
+      "source": "kb-db-001",
+      "target": "k8s/Deployment/kube-system/external-secrets",
+      "relation": "governs_workload"
+    },
+    {
+      "source": "kb-db-001",
+      "target": "k8s/Deployment/iam/openbao-agent-injector",
+      "relation": "governs_workload"
+    },
+    {
+      "source": "k8s/Namespace//gitlab",
+      "target": "kb-gp-002",
+      "relation": "contains_runbook"
+    },
+    {
+      "source": "kb-gp-002",
+      "target": "k8s/Deployment/gitlab/gitlab",
+      "relation": "governs_workload"
+    },
+    {
+      "source": "kb-gp-002",
+      "target": "k8s/Deployment/argocd/argocd-server",
+      "relation": "governs_workload"
+    },
+    {
+      "source": "k8s/Namespace//game-servers",
+      "target": "kb-game-003",
+      "relation": "contains_runbook"
+    },
+    {
+      "source": "k8s/Namespace//monitoring",
+      "target": "kb-game-003",
+      "relation": "contains_runbook"
+    },
+    {
+      "source": "kb-game-003",
+      "target": "k8s/Deployment/monitoring/kube-prometheus-stack-grafana",
+      "relation": "governs_workload"
+    },
+    {
+      "source": "kb-game-003",
+      "target": "k8s/Deployment/game-servers/minecraft",
+      "relation": "governs_workload"
+    },
+    {
+      "source": "k8s/Namespace//ingress-nginx",
+      "target": "kb-dns-004",
+      "relation": "contains_runbook"
+    },
+    {
+      "source": "kb-dns-004",
+      "target": "k8s/Deployment/ingress-nginx/ingress-nginx-controller",
+      "relation": "governs_workload"
+    },
+    {
+      "source": "k8s/Namespace//ai-infra",
+      "target": "kb-gpu-005",
+      "relation": "contains_runbook"
+    },
+    {
+      "source": "kb-gpu-005",
+      "target": "k8s/Deployment/ai-infra/ollama",
+      "relation": "governs_workload"
+    },
+    {
+      "source": "k8s/Namespace//monitoring",
+      "target": "kb-ops-006",
+      "relation": "contains_runbook"
+    },
+    {
+      "source": "kb-ops-006",
+      "target": "k8s/Deployment/monitoring/kube-prometheus-stack-grafana",
+      "relation": "governs_workload"
+    },
+    {
+      "source": "k8s/Namespace//storage-system",
+      "target": "kb-stor-007",
+      "relation": "contains_runbook"
+    },
+    {
+      "source": "k8s/Namespace//iam",
+      "target": "kb-iam-008",
+      "relation": "contains_runbook"
+    },
+    {
+      "source": "kb-iam-008",
+      "target": "k8s/Deployment/iam/authentik-server",
+      "relation": "governs_workload"
+    },
+    {
+      "source": "kb-iam-008",
+      "target": "k8s/Deployment/iam/openbao-agent-injector",
+      "relation": "governs_workload"
+    },
+    {
+      "source": "k8s/Namespace//argocd",
+      "target": "kb-gitops-009",
+      "relation": "contains_runbook"
+    },
+    {
+      "source": "kb-gitops-009",
+      "target": "k8s/Deployment/argocd/argocd-server",
+      "relation": "governs_workload"
+    },
+    {
+      "source": "k8s/Namespace//gitlab",
+      "target": "k8s/Pod/gitlab/runner-job-demo-failed",
+      "relation": "contains"
+    },
+    {
+      "source": "k8s/Pod/gitlab/runner-job-demo-failed",
+      "target": "k8s/Node//nodealpha01",
+      "relation": "runs_on_hardware"
+    },
+    {
+      "source": "cluster-home",
+      "target": "k8s/Namespace//ai-sandbox",
+      "relation": "contains"
+    },
+    {
+      "source": "k8s/Namespace//ai-sandbox",
+      "target": "k8s/Deployment/ai-sandbox/sandbox-worker",
+      "relation": "contains"
+    }
+  ],
+  "rts_currencies": [
+    {
+      "currency_id": "nodes",
+      "label": "Nodes",
+      "icon": "*",
+      "display_value": "3/3 Ready",
+      "supply_kind": "supply_cap",
+      "hex_color": "#22C55E",
+      "available": true,
+      "dropdown_items": [
+        {
+          "label": "nodealpha01",
+          "value": "nodealpha01",
+          "target_id": "k8s/Node//nodealpha01"
+        },
+        {
+          "label": "nodebeta02",
+          "value": "nodebeta02",
+          "target_id": "k8s/Node//nodebeta02"
+        },
+        {
+          "label": "nodegamma03",
+          "value": "nodegamma03",
+          "target_id": "k8s/Node//nodegamma03"
+        }
+      ]
+    },
+    {
+      "currency_id": "cpu_load",
+      "label": "CPU Load",
+      "icon": "*",
+      "display_value": "7.0% Avg (3/3 nodes)",
+      "supply_kind": "currency_rate",
+      "hex_color": "#22C55E",
+      "available": true,
+      "dropdown_items": [
+        {
+          "label": "nodealpha01",
+          "value": "6.0%",
+          "target_id": "k8s/Node//nodealpha01"
+        },
+        {
+          "label": "nodebeta02",
+          "value": "10.0%",
+          "target_id": "k8s/Node//nodebeta02"
+        },
+        {
+          "label": "nodegamma03",
+          "value": "5.0%",
+          "target_id": "k8s/Node//nodegamma03"
+        }
+      ]
+    },
+    {
+      "currency_id": "ram_load",
+      "label": "RAM Load",
+      "icon": "*",
+      "display_value": "25.7% Avg (3/3 nodes)",
+      "supply_kind": "currency_rate",
+      "hex_color": "#22C55E",
+      "available": true,
+      "dropdown_items": [
+        {
+          "label": "nodealpha01",
+          "value": "25.0%",
+          "target_id": "k8s/Node//nodealpha01"
+        },
+        {
+          "label": "nodebeta02",
+          "value": "32.0%",
+          "target_id": "k8s/Node//nodebeta02"
+        },
+        {
+          "label": "nodegamma03",
+          "value": "20.0%",
+          "target_id": "k8s/Node//nodegamma03"
+        }
+      ]
+    },
+    {
+      "currency_id": "network_load",
+      "label": "Net Load %",
+      "icon": "*",
+      "display_value": "Unavailable",
+      "supply_kind": "currency_rate",
+      "hex_color": "#94A3B8",
+      "available": false,
+      "dropdown_items": [
+        {
+          "label": "Net Load %",
+          "value": "Network counters not collected",
+          "target_id": "cluster-home"
+        }
+      ]
+    },
+    {
+      "currency_id": "build_supply",
+      "label": "Build Supply",
+      "icon": "*",
+      "display_value": "Unavailable",
+      "supply_kind": "food_supply",
+      "hex_color": "#94A3B8",
+      "available": false,
+      "dropdown_items": [
+        {
+          "label": "Build Supply",
+          "value": "CI slot capacity not collected",
+          "target_id": "cluster-home"
+        }
+      ]
+    },
+    {
+      "currency_id": "renovate_failures",
+      "label": "Renovate",
+      "icon": "*",
+      "display_value": "Unavailable",
+      "supply_kind": "upkeep_alert",
+      "hex_color": "#94A3B8",
+      "available": false,
+      "dropdown_items": [
+        {
+          "label": "Renovate",
+          "value": "Renovate results not collected",
+          "target_id": "cluster-home"
+        }
+      ]
+    },
+    {
+      "currency_id": "open_mrs",
+      "label": "Open MRs",
+      "icon": "*",
+      "display_value": "Unavailable",
+      "supply_kind": "production_queue",
+      "hex_color": "#94A3B8",
+      "available": false,
+      "dropdown_items": [
+        {
+          "label": "Open MRs",
+          "value": "GitLab merge requests not collected",
+          "target_id": "cluster-home"
+        }
+      ]
+    }
+  ],
+  "collected_at": "2026-11-01T21:00:00Z",
+  "node_count": 109,
+  "edge_count": 180
+}

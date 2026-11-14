@@ -1,0 +1,241 @@
+# Declarative Settled Production System Catalog (`.ai/graphify/settled_production_systems.yaml`)
+schema_version: "SettledProductionSystemCatalog v1"
+systems:
+  - system_id: "harbor"
+    label: "Harbor Container Registry & Trivy Scanner"
+    domain: "deployments_services"
+    epoch_introduced: 0
+    k8s_namespace: "harbor"
+    argocd_app: "harbor"
+    git_manifest_path: "gitops/apps/harbor.yaml"
+    primary_url: "https://harbor.cluster.example.org/harbor/projects"
+    control_plane_urls:
+      harbor_projects: "https://harbor.cluster.example.org/harbor/projects"
+      harbor_health_api: "https://harbor.cluster.example.org/api/v2.0/health"
+    human_monitoring_links:
+      grafana_dashboard_url: "https://grafana.cluster.example.org/d/k8s-system-harbor?var-namespace=harbor&var-service=harbor&from=now-1h&to=now"
+      gitlab_source_and_pipelines_url: "https://gitlab.cluster.example.org/platform/infra-gitops/-/tree/main/gitops/apps/harbor.yaml?system=harbor"
+      herdr_agent_pane_link: "herdr://attach/subagent-flash38-kg-01?system=harbor&cmd=hc+attach+subagent-flash38-kg-01"
+      dependency_analyzer_url: "https://dependencies.cluster.example.org/?focusNode=sys-harbor&system=harbor&view=blast-radius"
+      argocd_application_url: "https://argocd.cluster.example.org/applications/argocd/harbor?view=tree&system=harbor"
+      security_dashboard_url: "https://opscryer.cluster.example.org/secops?system=harbor&namespace=harbor&scanner=trivy-harbor"
+      live_opscryer_debug_url: "https://opscryer.cluster.example.org/api/v1/system-context?system=harbor&namespace=harbor&debug=1"
+    downstream_system_ids: ["openzfs_nas"]
+    playbooks:
+      - playbook_id: "harbor-redis-pool-exhausted"
+        title: "Harbor Redis Session Pool Exhausted on High Concurrency Push"
+        symptom_keywords: ["redis pool exhausted", "harbor core 504", "failed to get redis connection", "imagepushbackoff"]
+        solution_summary: "Harbor core is reachable, but the Redis connection pool saturated during parallel image pushes."
+        remediation_steps: ["Inspect Harbor Redis pod memory and active client connections in namespace harbor.", "Rollout restart deployment/harbor-core in namespace harbor to clear stale Redis sockets."]
+        explicit_commands: ["kubectl get pods -n harbor -o wide", "kubectl logs -n harbor -l component=redis --tail=50", "kubectl rollout restart deploy/harbor-core -n harbor"]
+        required_it_tickets: ["IT-SEC-HARBOR-01"]
+      - playbook_id: "harbor-imagepullbackoff-robot-secret"
+        title: "Kubernetes ImagePullBackOff on Internal Harbor Proxy"
+        symptom_keywords: ["imagepullbackoff", "errimagepull", "harbor-pull-secret", "dockerhub-proxy"]
+        solution_summary: "Target namespace is missing the Harbor robot pull secret or using an unproxied image path."
+        remediation_steps: ["Verify imagePullSecrets in the target namespace references harbor-pull-secret.", "Use the internal proxy path harbor.cluster.example.org/dockerhub-proxy/<repo>:<tag>."]
+        explicit_commands: ["kubectl get secret harbor-pull-secret -n default", "kubectl describe pod -l app -A"]
+        required_it_tickets: ["IT-PLAT-REGISTRY-02"]
+  - system_id: "openbao"
+    label: "OpenBao Zero-Trust KMS Vault & ExternalSecrets Operator"
+    domain: "deployments_services"
+    epoch_introduced: 0
+    k8s_namespace: "iam"
+    argocd_app: "openbao"
+    git_manifest_path: "infrastructure/openbao"
+    primary_url: "https://openbao.cluster.example.org/ui/vault/secrets"
+    control_plane_urls:
+      openbao_ui: "https://openbao.cluster.example.org/ui/vault/secrets"
+      openbao_health: "https://openbao.cluster.example.org/v1/sys/health"
+    human_monitoring_links:
+      grafana_dashboard_url: "https://grafana.cluster.example.org/d/k8s-system-openbao?var-namespace=iam&var-service=openbao&from=now-1h&to=now"
+      gitlab_source_and_pipelines_url: "https://gitlab.cluster.example.org/platform/infra-gitops/-/tree/main/infrastructure/openbao?system=openbao"
+      herdr_agent_pane_link: "herdr://attach/subagent-flash38-kg-01?system=openbao&cmd=hc+attach+subagent-flash38-kg-01"
+      dependency_analyzer_url: "https://dependencies.cluster.example.org/?focusNode=sys-openbao&system=openbao&view=blast-radius"
+      argocd_application_url: "https://argocd.cluster.example.org/applications/argocd/openbao?view=tree&system=openbao"
+      security_dashboard_url: "https://opscryer.cluster.example.org/secops?system=openbao&namespace=iam&scanner=openbao-kms-audit"
+      live_opscryer_debug_url: "https://opscryer.cluster.example.org/api/v1/system-context?system=openbao&namespace=iam&debug=1"
+    downstream_system_ids: ["authentik", "harbor", "gitlab"]
+    playbooks:
+      - playbook_id: "openbao-sealed-or-externalsecret-sync-error"
+        title: "OpenBao Replica Sealed or ExternalSecret Sync Failure"
+        symptom_keywords: ["sealed", "externalsecret", "secret sync", "vault unseal", "external-secrets"]
+        solution_summary: "An OpenBao replica is sealed after pod restart or the ExternalSecret key path under kv/data/homelab/ is out of sync."
+        remediation_steps: ["Inspect OpenBao pod readiness in namespace iam and check /v1/sys/health.", "Unseal sealed OpenBao replicas using scripts/vault/unseal-openbao.ps1 and verify external-secrets pods in kube-system."]
+        explicit_commands: ["kubectl get pods -n iam -l app.kubernetes.io/name=openbao", "kubectl get externalsecrets.external-secrets.io -A", "pwsh -File scripts/vault/unseal-openbao.ps1"]
+        required_it_tickets: ["IT-SEC-OPENBAO-01"]
+  - system_id: "argocd"
+    label: "ArgoCD GitOps Controller & Application Set Engine"
+    domain: "processes_workflows"
+    epoch_introduced: 1
+    k8s_namespace: "argocd"
+    argocd_app: "argocd"
+    git_manifest_path: "infrastructure/argocd"
+    primary_url: "https://argocd.cluster.example.org/applications"
+    control_plane_urls:
+      applications: "https://argocd.cluster.example.org/applications"
+      healthz: "https://argocd.cluster.example.org/healthz"
+    human_monitoring_links:
+      grafana_dashboard_url: "https://grafana.cluster.example.org/d/k8s-system-argocd?var-namespace=argocd&var-service=argocd&from=now-1h&to=now"
+      gitlab_source_and_pipelines_url: "https://gitlab.cluster.example.org/platform/infra-gitops/-/tree/main/infrastructure/argocd?system=argocd"
+      herdr_agent_pane_link: "herdr://attach/subagent-flash38-kg-01?system=argocd&cmd=hc+attach+subagent-flash38-kg-01"
+      dependency_analyzer_url: "https://dependencies.cluster.example.org/?focusNode=sys-argocd&system=argocd&view=blast-radius"
+      argocd_application_url: "https://argocd.cluster.example.org/applications/argocd/argocd?view=tree&system=argocd"
+      security_dashboard_url: "https://opscryer.cluster.example.org/secops?system=argocd&namespace=argocd&scanner=gitops-drift"
+      live_opscryer_debug_url: "https://opscryer.cluster.example.org/api/v1/system-context?system=argocd&namespace=argocd&debug=1"
+    downstream_system_ids: ["gitlab", "authentik", "harbor", "openbao", "opscryer_hud"]
+    playbooks:
+      - playbook_id: "argocd-presync-redis-secret-init-hook-stuck"
+        title: "ArgoCD PreSync Hook argocd-redis-secret-init Stuck or Chart.lock Drift"
+        symptom_keywords: ["argocd-redis-secret-init", "presync hook", "chart.lock", "comparisonerror", "outofsync"]
+        solution_summary: "ArgoCD upgrade is waiting on a pre-existing argocd-redis-secret-init PreSync Job or Chart.lock dependency drift."
+        remediation_steps: ["Ensure redisSecretInit.podAnnotations includes sidecar.istio.io/inject: false in infrastructure/argocd/values.yaml.", "Delete the completed/stale argocd-redis-secret-init PreSync Job in namespace argocd and sync Chart.lock."]
+        explicit_commands: ["kubectl get applications.argoproj.io -n argocd", "kubectl delete job argocd-redis-secret-init -n argocd --ignore-not-found", "python scripts/devops/swarm_dispatch.py upgrade-preflight"]
+        required_it_tickets: ["IT-GITOPS-ARGOCD-01"]
+  - system_id: "gitlab"
+    label: "GitLab CE Source Control, Merge Requests & CI Runners"
+    domain: "processes_workflows"
+    epoch_introduced: 1
+    k8s_namespace: "gitlab"
+    argocd_app: "gitlab"
+    git_manifest_path: "gitlab"
+    primary_url: "https://gitlab.cluster.example.org/platform/infra-gitops/-/pipelines"
+    control_plane_urls:
+      pipelines: "https://gitlab.cluster.example.org/platform/infra-gitops/-/pipelines"
+      merge_requests: "https://gitlab.cluster.example.org/platform/infra-gitops/-/merge_requests"
+    human_monitoring_links:
+      grafana_dashboard_url: "https://grafana.cluster.example.org/d/k8s-system-gitlab?var-namespace=gitlab&var-service=gitlab&from=now-1h&to=now"
+      gitlab_source_and_pipelines_url: "https://gitlab.cluster.example.org/platform/infra-gitops/-/tree/main/gitlab?system=gitlab"
+      herdr_agent_pane_link: "herdr://attach/subagent-flash38-kg-01?system=gitlab&cmd=hc+attach+subagent-flash38-kg-01"
+      dependency_analyzer_url: "https://dependencies.cluster.example.org/?focusNode=sys-gitlab&system=gitlab&view=blast-radius"
+      argocd_application_url: "https://argocd.cluster.example.org/applications/argocd/gitlab?view=tree&system=gitlab"
+      security_dashboard_url: "https://opscryer.cluster.example.org/secops?system=gitlab&namespace=gitlab&scanner=sast-secret-detection"
+      live_opscryer_debug_url: "https://opscryer.cluster.example.org/api/v1/system-context?system=gitlab&namespace=gitlab&debug=1"
+    downstream_system_ids: ["harbor", "opscryer_hud"]
+    playbooks:
+      - playbook_id: "gitlab-mr-pipeline-or-conflict-blocker"
+        title: "GitLab Merge Request Blocked by Conflict, Rebase, or Failed CI Job"
+        symptom_keywords: ["merge conflict", "mr blocked", "pipeline failed", "commitlint", "cannot_be_merged", "gitlab runner"]
+        solution_summary: "Open Merge Request is blocked by one of the 7 merge-blocking gates (conflict, rebase, or CI job failure)."
+        remediation_steps: ["Run gitlab_ops.py mr blockers to inspect exact failed jobs and conflict status.", "Verify lowercase Conventional Commits and LF line endings before pushing."]
+        explicit_commands: ["python scripts/devops/gitlab_ops.py mr list", "python scripts/devops/check_line_endings.py"]
+        required_it_tickets: ["IT-CICD-GITLAB-01"]
+      - playbook_id: "gitlab-recreate-rollout-503-or-puma-memory"
+        title: "GitLab StrategyType Recreate Rollout 503 Window or Puma Worker Saturation"
+        symptom_keywords: ["recreate rollout", "gitlab 503", "puma worker", "batched_background_migrations"]
+        solution_summary: "GitLab uses StrategyType: Recreate (Rule 8), causing an expected 1-2 minute HTTP 503 window while the replacement pod initializes on nodegamma03."
+        remediation_steps: ["Verify Deployment/gitlab rollout status in namespace gitlab on node nodegamma03.", "Confirm PostgreSQL batched_background_migrations have 0 non-finished rows."]
+        explicit_commands: ["kubectl get pods -n gitlab -o wide", "kubectl rollout status deploy/gitlab -n gitlab --timeout=180s"]
+        required_it_tickets: ["IT-CICD-GITLAB-02"]
+  - system_id: "authentik"
+    label: "Authentik Identity Provider OIDC SSO & Outpost"
+    domain: "deployments_services"
+    epoch_introduced: 2
+    k8s_namespace: "iam"
+    argocd_app: "authentik"
+    git_manifest_path: "infrastructure/authentik"
+    primary_url: "https://auth.cluster.example.org/if/admin/"
+    control_plane_urls:
+      admin_ui: "https://auth.cluster.example.org/if/admin/"
+      health_live: "https://auth.cluster.example.org/-/health/live/"
+    human_monitoring_links:
+      grafana_dashboard_url: "https://grafana.cluster.example.org/d/k8s-system-authentik?var-namespace=iam&var-service=authentik&from=now-1h&to=now"
+      gitlab_source_and_pipelines_url: "https://gitlab.cluster.example.org/platform/infra-gitops/-/tree/main/infrastructure/authentik?system=authentik"
+      herdr_agent_pane_link: "herdr://attach/subagent-flash38-kg-01?system=authentik&cmd=hc+attach+subagent-flash38-kg-01"
+      dependency_analyzer_url: "https://dependencies.cluster.example.org/?focusNode=sys-authentik&system=authentik&view=blast-radius"
+      argocd_application_url: "https://argocd.cluster.example.org/applications/argocd/authentik?view=tree&system=authentik"
+      security_dashboard_url: "https://opscryer.cluster.example.org/secops?system=authentik&namespace=iam&scanner=oidc-sso-audit"
+      live_opscryer_debug_url: "https://opscryer.cluster.example.org/api/v1/system-context?system=authentik&namespace=iam&debug=1"
+    downstream_system_ids: ["gitlab", "harbor", "opscryer_hud"]
+    playbooks:
+      - playbook_id: "authentik-oidc-clock-skew-or-outpost-sync"
+        title: "Authentik OIDC Token Rejected Due to NTP Clock Skew or Outpost Mismatch"
+        symptom_keywords: ["iat is in the future", "clock skew", "jwt expired immediately", "token used before issued", "authentik outpost"]
+        solution_summary: "Authentik IdP is healthy, but worker node chrony/NTP clock drifted >30s or OIDC outpost session requires refresh."
+        remediation_steps: ["Verify chrony NTP synchronization across Kubernetes worker nodes via chronyc tracking.", "Inspect authentik-server and authentik-worker pods in namespace iam."]
+        explicit_commands: ["kubectl get pods -n iam -l app.kubernetes.io/name=authentik", "chronyc tracking"]
+        required_it_tickets: ["IT-IAM-NTP-01"]
+  - system_id: "openzfs_nas"
+    label: "OpenZFS SCALE ZFS Storage Array & ZFS-NFS CSI Provisioner"
+    domain: "hardware_infra"
+    epoch_introduced: 2
+    k8s_namespace: "storage-system"
+    argocd_app: "migrated-zfs-nfs-driver"
+    git_manifest_path: "helm-migrations/zfs-nfs-driver.yaml"
+    primary_url: "https://nas.cluster.example.org/ui/storage"
+    control_plane_urls:
+      openzfs_storage: "https://nas.cluster.example.org/ui/storage"
+      openzfs_api: "https://nas.cluster.example.org/api/v2.0/system/state"
+    human_monitoring_links:
+      grafana_dashboard_url: "https://grafana.cluster.example.org/d/k8s-system-openzfs_nas?var-namespace=storage-system&var-service=openzfs_nas&from=now-1h&to=now"
+      gitlab_source_and_pipelines_url: "https://gitlab.cluster.example.org/platform/infra-gitops/-/tree/main/helm-migrations/zfs-nfs-driver.yaml?system=openzfs_nas"
+      herdr_agent_pane_link: "herdr://attach/subagent-flash38-kg-01?system=openzfs_nas&cmd=hc+attach+subagent-flash38-kg-01"
+      dependency_analyzer_url: "https://dependencies.cluster.example.org/?focusNode=sys-openzfs_nas&system=openzfs_nas&view=blast-radius"
+      argocd_application_url: "https://argocd.cluster.example.org/applications/argocd/migrated-zfs-nfs-driver?view=tree&system=openzfs_nas"
+      security_dashboard_url: "https://opscryer.cluster.example.org/secops?system=openzfs_nas&namespace=storage-system&scanner=zfs-storage-audit"
+      live_opscryer_debug_url: "https://opscryer.cluster.example.org/api/v1/system-context?system=openzfs_nas&namespace=storage-system&debug=1"
+    downstream_system_ids: []
+    playbooks:
+      - playbook_id: "openzfs-rwo-multiattach-or-nfs-estale"
+        title: "OpenZFS PVC RWO Multi-Attach Lock or NFSv4 Stale File Handle (ESTALE)"
+        symptom_keywords: ["multi-attach error", "volume is already exclusively attached", "stale file handle", "estale", "nfs mount input/output error"]
+        solution_summary: "OpenZFS ZFS pool is ONLINE, but either a stale ReadWriteOnce VolumeAttachment lock remains or an NFSv4 handle became stale after ZFS snapshot rollback."
+        remediation_steps: ["Inspect active Kubernetes VolumeAttachments and PVC events across namespaces.", "Ensure RWO workloads use StrategyType: Recreate and rollout restart pods with stale NFS handles."]
+        explicit_commands: ["kubectl get volumeattachment", "kubectl get pvc -A", "kubectl get pods -n storage-system -o wide"]
+        required_it_tickets: ["IT-STORAGE-RWO-01"]
+  - system_id: "opscryer_hud"
+    label: "OpsCryer Autonomous Swarm Broker, RAMCache & MR Launchpad"
+    domain: "deployments_services"
+    epoch_introduced: 3
+    k8s_namespace: "dev-envs"
+    argocd_app: "devcontainers"
+    git_manifest_path: "infrastructure/devcontainers/templates/swarm-memory.yaml"
+    primary_url: "https://opscryer.cluster.example.org/mrs"
+    control_plane_urls:
+      mr_launchpad: "https://opscryer.cluster.example.org/mrs"
+      hud_health: "https://opscryer.cluster.example.org/api/v1/health"
+    human_monitoring_links:
+      grafana_dashboard_url: "https://grafana.cluster.example.org/d/k8s-system-opscryer_hud?var-namespace=dev-envs&var-service=opscryer_hud&from=now-1h&to=now"
+      gitlab_source_and_pipelines_url: "https://gitlab.cluster.example.org/platform/infra-gitops/-/tree/main/infrastructure/devcontainers/templates/swarm-memory.yaml?system=opscryer_hud"
+      herdr_agent_pane_link: "herdr://attach/subagent-flash38-kg-01?system=opscryer_hud&cmd=hc+attach+subagent-flash38-kg-01"
+      dependency_analyzer_url: "https://dependencies.cluster.example.org/?focusNode=sys-opscryer_hud&system=opscryer_hud&view=blast-radius"
+      argocd_application_url: "https://argocd.cluster.example.org/applications/argocd/devcontainers?view=tree&system=opscryer_hud"
+      security_dashboard_url: "https://opscryer.cluster.example.org/secops?system=opscryer_hud&namespace=dev-envs&scanner=ocsf-secops"
+      live_opscryer_debug_url: "https://opscryer.cluster.example.org/api/v1/system-context?system=opscryer_hud&namespace=dev-envs&debug=1"
+    downstream_system_ids: ["gitlab", "openzfs_nas"]
+    playbooks:
+      - playbook_id: "opscryer-hud-sync-or-ramcache-throughput-pressure"
+        title: "OpsCryer HUD GitLab Sync Latency or RAMCache SQLite Lock Contention"
+        symptom_keywords: ["gitlab sync control", "ramcache throughput pressure", "no_db_dict_ramcache", "opscryer-mr-launchpad", "swarm-memory"]
+        solution_summary: "Multi-agent write bursts exceeded SQLite-in-RAM latency threshold or GitLab Sync Control requires refresh."
+        remediation_steps: ["Hot-swap MultiAgentRAMCacheHub to no_db_dict_ramcache via auto_switch_on_throughput_pressure.", "Verify opscryer-mr-launchpad and swarm-memory pods in namespace dev-envs."]
+        explicit_commands: ["kubectl get pods -n dev-envs -l app=opscryer-mr-launchpad", "python opscryer_abstraction.py --benchmark-engines"]
+        required_it_tickets: ["IT-PLAT-OPSCRYER-01"]
+  - system_id: "hopper_orchestrator"
+    label: "Hopper AI Orchestrator & Herdr CLI Agent Fleet"
+    domain: "deployments_services"
+    epoch_introduced: 3
+    k8s_namespace: "ai-sandbox"
+    argocd_app: "ai-sandbox"
+    git_manifest_path: "infrastructure/ai-sandbox"
+    primary_url: "https://aiorchestrator.cluster.example.org"
+    control_plane_urls:
+      hopper_ingress: "https://aiorchestrator.cluster.example.org"
+      hopper_cluster_svc: "http://hopper-api-gateway-service.ai-infra.svc.cluster.local:8000/v1/status"
+    human_monitoring_links:
+      grafana_dashboard_url: "https://grafana.cluster.example.org/d/k8s-system-hopper_orchestrator?var-namespace=ai-sandbox&var-service=hopper_orchestrator&from=now-1h&to=now"
+      gitlab_source_and_pipelines_url: "https://gitlab.cluster.example.org/platform/infra-gitops/-/tree/main/infrastructure/ai-sandbox?system=hopper_orchestrator"
+      herdr_agent_pane_link: "herdr://attach/subagent-flash38-kg-01?system=hopper_orchestrator&cmd=hc+attach+subagent-flash38-kg-01"
+      dependency_analyzer_url: "https://dependencies.cluster.example.org/?focusNode=sys-hopper_orchestrator&system=hopper_orchestrator&view=blast-radius"
+      argocd_application_url: "https://argocd.cluster.example.org/applications/argocd/ai-sandbox?view=tree&system=hopper_orchestrator"
+      security_dashboard_url: "https://opscryer.cluster.example.org/secops?system=hopper_orchestrator&namespace=ai-sandbox&scanner=agent-sandbox-audit"
+      live_opscryer_debug_url: "https://opscryer.cluster.example.org/api/v1/system-context?system=hopper_orchestrator&namespace=ai-sandbox&debug=1"
+    downstream_system_ids: ["gitlab", "harbor", "opscryer_hud"]
+    playbooks:
+      - playbook_id: "hopper-rabbitmq-queue-backpressure"
+        title: "Hopper AI Orchestrator RabbitMQ Queue Backpressure or Worker Stall"
+        symptom_keywords: ["agent_jobs_gpu", "agent_jobs_cpu", "rabbitmq queue", "queue backlog"]
+        solution_summary: "Hopper API Gateway is queueing tasks in RabbitMQ (agent_jobs_gpu / agent_jobs_cpu), requiring worker status inspection."
+        remediation_steps: ["Query Hopper API Gateway /v1/status via hopper-agent-cli status.", "Verify ai-sandbox networkpolicy and worker pods in namespace ai-sandbox."]
+        explicit_commands: ["/usr/local/bin/hopper-agent-cli status", "kubectl get pods -n ai-sandbox -o wide"]
+        required_it_tickets: ["IT-AI-HOPPER-01"]

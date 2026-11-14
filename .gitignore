@@ -1,5 +1,18 @@
+<<<<<<< HEAD
 __pycache__/
 *.py[cod]
 .venv/
 *.log
 *.pid
+=======
+# Never commit secret keys, .env files, or local runtime caches
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+__pycache__/
+*.pyc
+dist/
+scratch/
+>>>>>>> b29da468975c0a8701f5b169f229de7b23b3bbd5

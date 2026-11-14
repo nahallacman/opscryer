@@ -1,0 +1,6 @@
+description = "Load the compact (<350-token) OpsCryer + Brain + Swarm architecture digest"
+prompt = """
+Review the current 3-Tool Suite digest below and use deterministic Brain/Jev checks before spending model tokens:
+
+!{python opscryer_abstraction.py --ai-brief}
+"""

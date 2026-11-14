@@ -1,0 +1,7 @@
+description = "Run deterministic Brain (Jev + MetricPluginRegistry) diagnosis on an incident or symptom"
+prompt = """
+Diagnose the following operational symptom or ticket using the deterministic Brain + Live Telemetry Plugin Registry first:
+Symptom: {{args}}
+
+Run: `python -c "import json, sys; sys.path.insert(0, '.'); import opscryer_abstraction as a; print(json.dumps(a.evaluate_jev_with_live_plugins({{args!r}}), indent=2))"`
+"""
