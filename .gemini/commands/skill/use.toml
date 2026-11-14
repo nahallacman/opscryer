@@ -1,0 +1,4 @@
+description = "Lazy-load a specific portable skill from .ai/skills/<name>/SKILL.md into Gemini CLI"
+prompt = """
+Read and apply the skill instructions in `.ai/skills/{{args}}/SKILL.md` for the current task.
+"""

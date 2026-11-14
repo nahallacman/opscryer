@@ -1,0 +1,14 @@
+﻿{
+    "session_files":  240,
+    "quota_known":  true,
+    "totals":  {
+                   "input_tokens":  136454547,
+                   "cached_input_tokens":  127519872,
+                   "output_tokens":  976858,
+                   "reasoning_output_tokens":  100878,
+                   "total_tokens":  137431405
+               },
+    "weekly_used_percent":  79.0,
+    "remaining_percent":  21.0,
+    "latest_timestamp":  "2026-10-30T22:14:04.324Z"
+}

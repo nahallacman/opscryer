@@ -1,0 +1,12 @@
+# OpsCryer — Hackathon Live Presentation Configuration Override
+# Usage: python opscryer_browser.py --config config.hackathon.example.yaml --serve --port 8088
+organization_name: "Hackathon Live Demo Stack"
+domain_suffix: "demo.local"
+default_mode: "REMOTE_BACKEND_API"
+api_base_url: "http://127.0.0.1:8090"
+port: 8088
+read_only_public_mode: false
+itsm_provider_name: "Enterprise ITSM Portal"
+ollama_url: "http://127.0.0.1:11434"
+openai_base_url: "https://api.openai.com/v1"
+jev_model: "gpt-4o-mini"

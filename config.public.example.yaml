@@ -1,0 +1,27 @@
+# OpsCryer (Piece A) — Public Release Default Configuration
+# SPDX-License-Identifier: Apache-2.0
+organization_name: "Acme Cloud Engineering"
+domain_suffix: "example.org"
+default_mode: "STANDALONE_MOCK"
+api_base_url: ""
+port: 8088
+read_only_public_mode: true
+itsm_provider_name: "Enterprise Service Desk"
+# Integration examples only: Piece A preserves these flat keys but does not
+# invoke SystemOneJevClient, Ollama, or Codex CLI. See README.md for response JSON.
+# Start Ollama separately and run: ollama pull qwen2.5-coder:7b
+ollama_url: "http://localhost:11434"
+jev_provider: "ollama"
+jev_model: "qwen2.5-coder:7b"
+# calibrated_probability <0.80: stop traversal and request human escalation.
+# Exactly 0.80 may follow evaluated_value's true/false branch, subject to policy.
+# Invalid JSON, missing fields, or provider failures also require escalation.
+# The browser's minimal parser returns this decimal as a string; clients must
+# convert/validate it before comparison. This key does not enable a runtime gate.
+jev_min_confidence: 0.80
+# Alternative proposed client wiring: jev_provider: "codex"
+# Install/sign in separately: npm install -g @openai/codex; codex login
+# Use codex exec --sandbox read-only --output-schema with the README schema.
+codex_command: "codex"
+# Account-backed Codex uses its own model/account configuration, not this URL.
+openai_base_url: ""
