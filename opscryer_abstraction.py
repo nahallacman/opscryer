@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: Apache-2.0
 """
-opscryer_jev_ramcache_abstraction.py — Low-Power AI Entrypoint, Pluggable Knowledge Graph +
+opscryer_abstraction.py — Low-Power AI Entrypoint, Pluggable Knowledge Graph +
 Jev Model Abstraction, and Multi-Agent RAMCache with Swappable Database-Interface Backends.
 
 Solves three core architectural needs for consuming and extending OpsCryer across both
@@ -2567,7 +2567,7 @@ class HerdrFleetBrainController:
 
         hc_cmd = (
             f"hc run --bg --name {subagent_id} "
-            f"gemini -m {model} -p \"Consume Knowledge Graph via opscryer_jev_ramcache_abstraction.py and resolve explicit actions with zero guessing\""
+            f"gemini -m {model} -p \"Consume Knowledge Graph via opscryer_abstraction.py and resolve explicit actions with zero guessing\""
         )
         subagent_state = {
             "subagent_id": subagent_id,

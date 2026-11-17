@@ -67,7 +67,7 @@ def _mock_prometheus_up_envelope(count: int = 1) -> bytes:
             "resultType": "vector",
             "result": [
                 {
-                    "metric": {"__name__": "up", "instance": f"10.10.3.{10+i}:9100", "job": "node"},
+                    "metric": {"__name__": "up", "instance": f"10.20.3.{10+i}:9100", "job": "node"},
                     "value": [1700000000, "1"],
                 }
                 for i in range(count)

@@ -769,5 +769,33 @@ def main(argv=None) -> int:
     return 0
 
 
+def build_predumped_hydrogen_cast_metadata() -> dict[str, object]:
+    """Return static Hydrogen predumped cast route metadata without touching Central Brain."""
+    return {
+        "schema_version": "hydrogen-cast-metadata/v1",
+        "skills_mode": "predumped_standalone",
+        "runtime_brain_checks_required": 0,
+        "model_tier": "hydrogen",
+        "recommended_model": "qwen2.5-coder:1.5b",
+        "max_prompt_tokens_budget": 400,
+        "configurable_model_replacement": True,
+        "supported_providers": [
+            "ollama",
+            "openai_compatible",
+            "gemini",
+            "deterministic_cutoff",
+        ],
+        "default_fallback_chain": [
+            "hydrogen",
+            "sub_hydrogen",
+            "pico_local",
+            "zero_token_cutoff",
+        ],
+        "cutoff_survival_tier": "zero_token_cutoff",
+        "endpoint": "/api/v1/cast/hydrogen",
+        "swarm_cast_alias": "/api/v1/nanomachine-swarm/cast",
+    }
+
+
 if __name__ == "__main__":
     raise SystemExit(main())

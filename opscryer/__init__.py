@@ -11,7 +11,10 @@ __version__ = '1.2.0'
 
 PACKAGE_SUBSYSTEMS = {
     'core': {
-        'modules': ['opscryer_backend', 'jev_client', 'dogfood_graph', 'opscryer_config', 'system_context'],
+        'modules': [
+            'opscryer_backend', 'jev_client', 'dogfood_graph', 'opscryer_config',
+            'system_context', 'node_federation', 'route_registry', 'opscryer.bridge',
+        ],
         'responsibility': 'Spatial graph contracts, knowledge queries, and Jev ticket routing.',
     },
     'live': {
@@ -19,6 +22,7 @@ PACKAGE_SUBSYSTEMS = {
             'cluster_harvester', 'cluster_diff_engine', 'live_currencies',
             'live_metrics_poller', 'live_advisor', 'live_gitops_signals',
             'prometheus_loki_adapter', 'metrics_exporter', 'webhook_notifier',
+            'event_stream',
         ],
         'responsibility': 'Live cluster discovery, health, metrics, currencies, and operational advice.',
     },
@@ -26,7 +30,9 @@ PACKAGE_SUBSYSTEMS = {
         'modules': [
             'telemetry_sanitizer', 'security_airlock', 'oscal_compliance',
             'openbao_kms_provenance', 'oidc_rbac_verifier', 'chaos_blast_radius',
-            'pqc_security', 'action_cards',
+            'pqc_security', 'action_cards', 'cybersecurity_bridge',
+            'mcp_bridge', 'gitops_promotion_bridge', 'itsm_chatops_bridge',
+            'flight_recorder',
         ],
         'responsibility': 'Telemetry sanitization, security audits, compliance, and chaos isolation.',
     },
@@ -38,7 +44,8 @@ PACKAGE_SUBSYSTEMS = {
             'playbook_studio', 'model_tier_copilot', 'game_observability_loop',
             'jev_knowledge_explorer', 'storage_zfs_cockpit',
             'secops_vulnerability_cockpit', 'live_metrics_poller',
-            'environment_adapters', 'openapi_spec',
+            'environment_adapters', 'openapi_spec', 'scale_benchmark',
+            'chat_walkthrough', 'jev_calibration_eval', 'tactical_security_deck',
         ],
         'responsibility': 'Suite HTML portals and their supporting application catalogs.',
     },
@@ -74,6 +81,9 @@ def __getattr__(name: str):
     if name == "action_cards":
         import action_cards
         return action_cards
+    if name == "bridge":
+        import opscryer.bridge
+        return opscryer.bridge
     raise AttributeError(f"module 'opscryer' has no attribute '{name}'")
 
 

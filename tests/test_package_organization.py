@@ -71,16 +71,18 @@ class TestPackageOrganization(unittest.TestCase):
 
             sys.addaudithook(guard)
             if sys.argv[1] == 'reverse':
+                import opscryer.bridge
                 import opscryer.portals
                 import opscryer.security
                 import opscryer.live
                 import opscryer.core
             import opscryer
-            from opscryer import core, live, security, portals
+            from opscryer import bridge, core, live, security, portals
 
             for name, module in (
                 ('core', core), ('live', live),
                 ('security', security), ('portals', portals),
+                ('bridge', bridge),
             ):
                 assert module.__name__ == 'opscryer.' + name
                 assert getattr(opscryer, name) is module
@@ -124,6 +126,35 @@ class TestPackageOrganization(unittest.TestCase):
         self.assertIs(live.poll_live_cluster_metrics, poll_live_cluster_metrics)
         self.assertIs(security.evaluate_code_search_airlock, evaluate_code_search_airlock)
         self.assertIs(portals.render_standalone_browser_html, render_standalone_browser_html)
+
+    def test_route_registry_and_repository_modules_are_packaged(self):
+        import opscryer
+        import route_registry
+
+        with (ROOT / 'pyproject.toml').open('rb') as stream:
+            metadata = tomllib.load(stream)
+        setuptools_cfg = metadata['tool']['setuptools']
+        packages = set(setuptools_cfg['packages'])
+        py_modules = set(setuptools_cfg['py-modules'])
+
+        self.assertIn('opscryer', packages)
+        self.assertIn('opscryer.bridge', packages)
+
+        top_level_py = {p.stem for p in ROOT.glob('*.py')}
+        missing_from_pyproject = sorted(top_level_py - py_modules)
+        self.assertEqual(
+            missing_from_pyproject, [],
+            f'Top-level modules missing from pyproject.toml py-modules: {missing_from_pyproject}',
+        )
+
+        subsystems = opscryer.get_package_architecture_map()
+        all_routes = [*route_registry.HTML_PORTAL_ROUTES, *route_registry.API_V1_ROUTES.values()]
+        for route in all_routes:
+            mod = route['module']
+            subsystem = route['subsystem']
+            with self.subTest(subsystem=subsystem, module=mod):
+                self.assertIn(mod, py_modules)
+                self.assertIn(mod, subsystems[subsystem]['modules'])
 
 
 if __name__ == '__main__':

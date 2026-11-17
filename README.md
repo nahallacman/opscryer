@@ -1,46 +1,30 @@
-<<<<<<< HEAD
-# OpsCryer
-
-OpsCryer bridge: translates brain state into spatial graph catalogs and integration links.
-
-## Components
-
-- **Spatial Graph** — Workspace spatial graph catalogs
-- **Bridge** — Integration between brain state and external systems
-- **Telemetry** — Metrics and health monitoring plugins
-
-## Usage
-
-```bash
-# Build spatial graph catalog
-python3 -m bridge.opscryer_bridge --catalog
-```
-=======
 <!-- # SPDX-License-Identifier: Apache-2.0 -->
 # OpsCryer 3-Tool Operations & Knowledge Suite
 
-A zero-dependency, encapsulated-box **Spatial Information Tree & Classic RTS/TBS Operations Suite** driven by the open `SpatialGraphContract v1` JSON schema, decomposed into three interoperable tools:
-1. **`OpsCryer` (`:8090` / `opscryer_browser.py`)**: Read-only visual spatial topology discovery, NOC HUD, and optional Support Ticket Triage UI.
-2. **`The Brain` (`:8091` / `opscryer_abstraction.py`)**: Authoritative Knowledge Graph, deterministic `Jev` diagnostic engine (`System 1` zero-AI hot path), Pluggable Metric Extension System (`MetricPluginRegistry`), and Closed-Loop `PlaybookExecutionEngine`.
-3. **`The Swarm` (`:8094` / `opscryer_abstraction.py`)**: Persistent multi-agent development environment and AI Fallback / Playbook-Rework pipeline (`SwarmAIGraphAndPlaybookPipeline`) invoked only on `UNCOVERED_BY_DECISION_GRAPH` or `NEEDS_REWORK`.
+A zero-dependency (`dependencies = []`, Python `>=3.11`), encapsulated-box **Spatial Information Tree & Classic RTS/TBS Operations Suite** driven by the open `SpatialGraphContract v1` JSON schema, decomposed into three interoperable planes/tools:
+1. **`OpsCryer` (`:8088` / `opscryer_browser.py` + `opscryer_backend.py`)**: Multithreaded (`ThreadingMixIn`) unified web gateway, Piece A standalone spatial topology browser, 21 domain cockpits (`route_registry.py`), and deterministic support-ticket triage UI.
+2. **`The Brain` (`:8089` when paired, or standalone `opscryer_abstraction.py`)**: Authoritative Knowledge Graph (`System 1` `Jev` deterministic routing + `MetricPluginRegistry` + `PlaybookExecutionEngine`) with pre-dumped `<=400`-token Hydrogen skill context packs.
+3. **`The Swarm` / Execution Plane (`opscryer/bridge/hydrogen_cast.py`, `opscryer_abstraction.py`)**: Target-bound pre-dumped Hydrogen casting (`/api/v1/cast/hydrogen`, `/api/v1/cast/models`) with multi-provider downward failover down to `zero_token_cutoff`.
 
+- **Spatial Browser Navigation**: Single-click selects and inspects an encapsulated box in the bottom perimeter console; **Double-Click**, **`↘ Dive`**, or **`[Q]`** drills deeper; **`Ctrl+Wheel` / `Alt+Wheel`** zooms across layers without hijacking vertical page scroll; **`[W]` / `Esc` / `Backspace`** ascends; the Swarm Casting HUD stays collapsed until invoked explicitly (`⚡ Cast Swarm Ability`).
+- **Gateway Host Policy**: Binds to `127.0.0.1:8088` by default and validates `Host`, `Origin`, `Sec-Fetch-Site`, and JSON `Content-Type` headers. Set `OPSCRYER_ALLOWED_HOST_SUFFIXES` (for example `.corp.local`) or `OPSCRYER_ALLOWED_HOSTS` when fronting behind internal ingress domains.
 - **License:** Single License — **Apache License, Version 2.0** (`SPDX-License-Identifier: Apache-2.0`; provided **"AS IS" with No Warranty** under Sections 7 & 8; Commercial & Future Resale Ready under Sections 2, 4 & 9).
 
 ## Quickstart
 
 ```bash
-# 1. Serve the interactive Spatial Browser with built-in sample topology
+# 1. Serve the unified Spatial Browser & local HTTP gateway (:8088)
 python opscryer_browser.py --serve --port 8088
 
 # 2. Inspect the 3-Tool Architecture (<350-token JSON mental model & pluggable metric demo)
 python opscryer_abstraction.py --ai-brief
 python opscryer_abstraction.py --demo-plugin-and-ramcache
 
-# 3. Export a static HTML/JSON bundle for GitHub Pages / offline laptop demo
+# 3. Export a zero-backend static HTML/JSON bundle for offline presentation
 python opscryer_browser.py --export-bundle ./static-bundle
 ```
 
-To use the public, offline defaults:
+To use the public, offline defaults and run the full verification suite:
 
 ```bash
 python opscryer_browser.py --config config.public.example.yaml --serve --port 8088
@@ -49,17 +33,9 @@ python -m unittest discover -s tests -v
 
 ## Shipped architecture
 
-The browser supplies the standalone UI and synthetic graph. The backend validates
-and queries graph snapshots through an in-process API dispatcher; its CLI exports
-data or contracts rather than starting an HTTP server. Policy and operations
-modules expose importable functions. The showcase runs public checks across them.
+Piece A (`opscryer_browser.py --export-bundle`) produces a standalone static HTML/JSON frontend bundle in `STANDALONE_MOCK` mode with zero backend code. When launched with `opscryer_browser.py --serve`, the built-in multithreaded gateway (`route_registry.py`) hosts the spatial browser UI, snapshot health/currency/concierge APIs, SSE telemetry streams (concurrency-capped at `MAX_CONCURRENT_SSE_STREAMS = 16`), 21 integrated cockpit routes, and optional ecosystem integration (`OPSCRYER_ECOSYSTEM_OVERLAY=1` with `brain` `:8089` and `meshworks` Hydrogen cast `/api/v1/cast/hydrogen`).
 
-The shared boundary is `SpatialGraphContract v1`: the browser exports a catalog,
-and `KnowledgeGraphBackendEngine` validates it before serving catalog, search,
-drilldown, path, and ticket operations through its in-process dispatcher. A remote
-browser integration needs an HTTP adapter around that dispatcher. The standalone
-browser's local server serves the frontend and the snapshot-based live-cluster
-routes documented below; it does not host the full backend dispatcher API.
+The shared boundary is `SpatialGraphContract v1`: the browser and cluster harvester emit validated catalogs, and `KnowledgeGraphBackendEngine` (`opscryer_backend.py`) serves BM25 search, shortest-path BFS, drilldown, and deterministic ticket deflection (`handle_api_request()`). Policy and operations modules also expose importable CLI functions (`opscryer_cli.py`, `opscryer_showcase.py`).
 
 For ticket automation, an integrating caller supplies structured predicates to
 `SystemOneJevClient` and traverses the tree with `evaluate_ticket_with_jev_tree()`.
@@ -628,4 +604,16 @@ does not redirect Codex. The browser's `openai_base_url` is left empty.
 Keep prompts synthetic and credentials outside the checkout. Follow `AGENTS.md`
 for telemetry sanitization: scrub public WAN IPv4 addresses to `203.0.113.1` and
 mask MAC addresses as `AA:BB:CC:XX:XX:XX`.
->>>>>>> b29da468975c0a8701f5b169f229de7b23b3bbd5
+
+## Spatial Graph & Hydrogen Cast Bridges (`opscryer/bridge/`)
+
+Translate external brain manifests, watcher states, and agent graph outputs into OpsCryer spatial catalogs (`opscryer/bridge/opscryer_bridge.py`), or dispatch target-bound pre-dumped Hydrogen casts (`opscryer/bridge/hydrogen_cast.py`, exposed via `POST /api/v1/cast/hydrogen` and `GET /api/v1/cast/models`):
+
+```bash
+# Emit minimal bridge catalog JSON
+python -m opscryer.bridge.opscryer_bridge --catalog
+
+# Emit validated SpatialGraphContract v1 JSON (optionally reading a brain manifest)
+python -m opscryer.bridge.opscryer_bridge --spatial-contract --brain-manifest ../brain/data/skills-manifest.json
+```
+

@@ -389,18 +389,34 @@ class Element {
     this.style = {};
     this.textContent = '';
     this.listeners = {};
+    this.dataset = {};
+    this._classes = new Set();
+    this.classList = {
+      toggle: (name, force) => {
+        const next = force === undefined ? !this._classes.has(name) : Boolean(force);
+        if (next) this._classes.add(name);
+        else this._classes.delete(name);
+        return next;
+      },
+      contains: name => this._classes.has(name),
+      add: name => this._classes.add(name),
+      remove: name => this._classes.delete(name),
+    };
   }
   appendChild(child) { this.children.push(child); return child; }
   replaceChildren(...children) { this.children = children; }
   addEventListener(type, callback) { this.listeners[type] = callback; }
+  setAttribute() {}
 }
 const elements = new Map();
 global.document = {
+  listeners: {},
   getElementById(id) {
     if (!elements.has(id)) elements.set(id, new Element());
     return elements.get(id);
   },
-  createElement() { return new Element(); }
+  createElement() { return new Element(); },
+  addEventListener(type, callback) { this.listeners[type] = callback; }
 };
 global.window = {location: {search: ''}};
 '''
@@ -426,27 +442,52 @@ global.window = {location: {search: ''}};
     assert.equal($('rts-minimap-blips').children.length, children.length);
   }
   checkLayer(0);
-  for (let level = 1; level <= 4; level++) {
-    const parent = adapter.getNode(route[level - 1]);
-    const box = $('browser-children-list').children[
-      parent.drilldown_children.indexOf(route[level])];
-    // Exercise both supported box navigation gestures.
-    if (level === 1) box.listeners.wheel({deltaY: 20});
-    else box.listeners.click();
-    checkLayer(level);
-  }
-  // Clicking the displayed leaf must not add a spurious L5 history entry.
-  $('browser-children-list').children[0].listeners.click();
+  // Plain wheel without Ctrl/Alt must not zoom across layers.
+  const l0Box = $('browser-children-list').children[
+    adapter.getNode(route[0]).drilldown_children.indexOf(route[1])];
+  l0Box.listeners.wheel({deltaY: 20});
+  checkLayer(0);
+  // Ctrl+Wheel zooms into L1.
+  l0Box.listeners.wheel({deltaY: 20, ctrlKey: true, preventDefault() {}});
+  checkLayer(1);
+
+  // Single-click at L1 selects/inspects in-place without diving; [Q] key dives into L2.
+  const l1Box = $('browser-children-list').children[
+    adapter.getNode(route[1]).drilldown_children.indexOf(route[2])];
+  l1Box.listeners.click();
+  assert.equal(adapter.currentId, route[1]);
+  assert.equal(adapter.selectedBoxId, route[2]);
+  assert.equal(l1Box.classList.contains('selected-box'), true);
+  document.listeners.keydown({key: 'q'});
+  checkLayer(2);
+
+  // Inline Dive chip zooms L2 -> L3.
+  const l2Box = $('browser-children-list').children[
+    adapter.getNode(route[2]).drilldown_children.indexOf(route[3])];
+  l2Box.children[0].children[1].listeners.click({stopPropagation() {}});
+  checkLayer(3);
+
+  // Double-click focuses leaf box at L4.
+  const l3Box = $('browser-children-list').children[
+    adapter.getNode(route[3]).drilldown_children.indexOf(route[4])];
+  l3Box.listeners.dblclick();
+  checkLayer(4);
+
+  // Clicking or pressing [Q] on the displayed leaf must not add a spurious L5 history entry.
+  const l4Box = $('browser-children-list').children[0];
+  l4Box.listeners.click();
+  document.listeners.keydown({key: 'q'});
   checkLayer(4);
   await adapter.selectNode('missing-node', false);
   checkLayer(4);
-  ascendBoxLayer();
+  // Inline Ascend chip on leaf card or [W] ascends back to L3.
+  l4Box.children[0].children[1].listeners.click({stopPropagation() {}});
   checkLayer(3);
   $('browser-ancestor-list').children[1].listeners.click();
   checkLayer(1);
-  resetToRootLayer();
+  document.listeners.keydown({key: 'w'});
   checkLayer(0);
-  ascendBoxLayer();
+  document.listeners.keydown({key: 'Escape'});
   checkLayer(0);
 })().catch(error => { console.error(error); process.exitCode = 1; });
 '''

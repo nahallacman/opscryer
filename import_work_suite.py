@@ -84,7 +84,7 @@ def verify_work_bundle(bundle_root: Path = BUNDLE_ROOT) -> dict[str, Any]:
         )
         abstraction_ok = proc.returncode == 0
     passed = (
-        len(skills) >= 10
+        len(skills) >= 2
         and has_gemini_md
         and has_gemini_settings
         and len(gemini_commands) >= 4

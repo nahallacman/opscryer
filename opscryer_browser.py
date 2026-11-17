@@ -25,7 +25,9 @@ from __future__ import annotations
 
 import argparse
 from collections import deque
+from copy import deepcopy
 import http.server
+import ipaddress
 import json
 import math
 import re
@@ -121,6 +123,78 @@ if not issubclass(socketserver.TCPServer, socketserver.ThreadingMixIn):
 else:
     # CLI verification can load this module repeatedly through runpy.
     _ReusableTCPServer = socketserver.TCPServer
+
+MAX_CONCURRENT_SSE_STREAMS = 16
+_SSE_STREAM_LOCK = threading.Lock()
+_SSE_ACTIVE_STREAMS = 0
+
+
+def _permitted_host_suffixes_from_env() -> tuple[str, ...]:
+    """Return default local/cluster suffixes plus any configured OPSCRYER_ALLOWED_HOST_SUFFIXES."""
+    defaults = [".cluster.local", ".internal", ".local"]
+    raw_extra = os.environ.get("OPSCRYER_ALLOWED_HOST_SUFFIXES", "").strip()
+    if raw_extra:
+        for item in raw_extra.split(","):
+            cleaned = item.strip().lower()
+            if cleaned:
+                defaults.append(cleaned if cleaned.startswith(".") else f".{cleaned}")
+    return tuple(dict.fromkeys(defaults))
+
+
+def _is_permitted_gateway_host(raw_host: str) -> bool:
+    """Allow loopback, cluster/local DNS suffixes, or configured hosts to prevent DNS rebinding."""
+    text = str(raw_host or "").strip()
+    if not text:
+        return True
+    if "@" in text or any(ch.isspace() or ord(ch) < 32 or ord(ch) == 127 for ch in text):
+        return False
+    parsed = urlsplit(f"http://{text}")
+    host_only = (parsed.hostname or "").strip().lower().strip("[]")
+    if not host_only:
+        return False
+    # Permit localhost plus default cluster/local suffixes or OPSCRYER_ALLOWED_HOST_SUFFIXES overrides.
+    if host_only == "localhost" or any(
+        host_only == suffix.lstrip(".") or host_only.endswith(suffix)
+        for suffix in _permitted_host_suffixes_from_env()
+    ):
+        return True
+    extra_raw = os.environ.get("OPSCRYER_ALLOWED_HOSTS", "").strip()
+    if extra_raw:
+        extra_hosts = {item.strip().lower() for item in extra_raw.split(",") if item.strip()}
+        if host_only in extra_hosts:
+            return True
+    try:
+        addr = ipaddress.ip_address(host_only)
+    except ValueError:
+        return False
+    # Reject unspecified, link-local IMDS (169.254/16, fe80::/10), and multicast IP literals.
+    return not addr.is_unspecified and not addr.is_link_local and not addr.is_multicast
+
+
+def _validate_post_request_security(headers: Any) -> tuple[bool, int, str]:
+    """Enforce cross-site POST protections and Content-Type validation when supplied."""
+    fetch_site = str(headers.get("Sec-Fetch-Site") or "").strip().lower()
+    if fetch_site == "cross-site":
+        return False, 403, "Cross-site POST request blocked"
+    origin = str(headers.get("Origin") or "").strip()
+    referer = str(headers.get("Referer") or "").strip()
+    source_url = origin or referer
+    if source_url:
+        parsed = urlsplit(source_url)
+        # Reject non-HTTP schemes, embedded credentials, or external origins/referers.
+        if (
+            parsed.scheme.lower() not in {"http", "https"}
+            or parsed.username
+            or parsed.password
+            or not _is_permitted_gateway_host(parsed.netloc)
+        ):
+            return False, 403, "Cross-origin POST request blocked"
+    raw_ct = headers.get("Content-Type")
+    if raw_ct is not None and str(raw_ct).strip():
+        mime = str(raw_ct).split(";")[0].strip().lower()
+        if mime != "application/json":
+            return False, 415, "Unsupported Media Type: application/json required"
+    return True, 200, ""
 
 CONTRACT_VERSION = "1.0-separable-spatial-graph-contract"
 
@@ -1031,8 +1105,18 @@ def build_nanomachine_swarm_status(timeout_multiplier: float = 3.0) -> dict[str,
 
 def evaluate_nanomachine_swarm_cast(body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
     """Evaluate a non-blocking Nanomachine Swarm ability cast with rolling mu/sigma timeout and sigma-sized backoff."""
-    if str(body.get("action") or "").strip() == "live_tools_snapshot":
+    action_name = str(body.get("action") or "").strip()
+    if action_name == "live_tools_snapshot":
         return 200, probe_real_connected_tools()
+    # Route predumped standalone listing, model catalog, predumped mode, or target-only casts with zero Brain checks.
+    if (
+        action_name in {"list_predumped_harnesses", "list_cast_models"}
+        or str(body.get("skills_mode") or "").strip() in {"predumped", "predumped_standalone"}
+        or ("target" in body and "ability_id" not in body)
+    ):
+        from opscryer.bridge.hydrogen_cast import handle_hydrogen_cast_request
+
+        return handle_hydrogen_cast_request(body)
 
     ability_id = str(body.get("ability_id") or "reground_ram_rag").strip()
     if ability_id not in _NANOMACHINE_ABILITIES_STATE:
@@ -1503,7 +1587,7 @@ def render_standalone_browser_html(default_api_base: str = "", dataset: dict[str
       align-items: stretch;
       gap: 0.75rem;
       padding: 0.55rem 1rem;
-      height: 188px;
+      height: 164px;
       background: linear-gradient(180deg, #0D1527 0%, #060A14 100%);
       border-top: 2px solid #334155;
       box-shadow: 0 -6px 22px rgba(0, 0, 0, 0.75);
@@ -1538,7 +1622,7 @@ def render_standalone_browser_html(default_api_base: str = "", dataset: dict[str
       border-radius: 8px;
       padding: 0.45rem;
       text-align: center;
-      min-height: 112px;
+      min-height: 96px;
     }
     .slot-grid-6 {
       display: grid;
@@ -1769,7 +1853,8 @@ def render_standalone_browser_html(default_api_base: str = "", dataset: dict[str
         <div id="browser-ancestor-list"></div>
       </div>
       <div style="display:flex;align-items:center;gap:0.45rem;flex-wrap:wrap;">
-        <span style="font-size:0.71rem;color:var(--muted);">🖱️ Click = Dive / Inspect • Wheel In/Out = 60 FPS Layer Zoom • Sub-Chips = 2-Layer Jump</span>
+        <span style="font-size:0.71rem;color:var(--muted);">🖱️ Click = Select/Inspect • Double-Click / [Q] = Dive • Ctrl/Alt+Wheel = Layer Zoom • [W]/Esc = Ascend</span>
+        <button type="button" onclick="enterSelectedBoxLayer()">↘ Dive Selected [Q]</button>
         <button type="button" onclick="ascendBoxLayer()">⬆ Ascend Layer [W]</button>
         <button type="button" onclick="resetToRootLayer()">🏠 Root [L0]</button>
       </div>
@@ -1995,6 +2080,18 @@ def render_standalone_browser_html(default_api_base: str = "", dataset: dict[str
       zoomDensity: 'multi_depth',
       gameTheme: 'terran_command',
       lastRenderMs: 0.3,
+      lastWheelZoomMs: -1000,
+
+      syncSelectedBoxVisual(targetId) {
+        const list = $('browser-children-list');
+        if (!list || !Array.isArray(list.children) && !(list.children && list.children.length)) return;
+        const tid = String(targetId || '');
+        Array.from(list.children).forEach(card => {
+          const isSel = Boolean(tid && card && card.dataset && card.dataset.nodeId === tid);
+          card.isSelectedBox = isSel;
+          if (card.classList && card.classList.toggle) card.classList.toggle('selected-box', isSel);
+        });
+      },
 
       rebuildFastIndex() {
         this.nodeMap = new Map();
@@ -2139,7 +2236,7 @@ def render_standalone_browser_html(default_api_base: str = "", dataset: dict[str
           return;
         }
         try {
-          const res = await fetch((this.apiBase || '') + '/api/v1/graph/catalog');
+          const res = await fetch((this.apiBase || '') + '/api/v1/graph/catalog', {cache: 'no-store'});
           const data = await res.json();
           if (data && Array.isArray(data.nodes)) {
             this.catalog = data;
@@ -2281,10 +2378,38 @@ def render_standalone_browser_html(default_api_base: str = "", dataset: dict[str
         const box = mk('button');
         box.type = 'button';
         box.className = 'rts-layer-box';
+        box.dataset = box.dataset || {};
+        box.dataset.nodeId = String(node.id);
+        if (box.setAttribute) box.setAttribute('data-node-id', String(node.id));
         box.style.borderColor = String(arch.border_color || '#38BDF8');
         const titleRow = mk('div'), strong = mk('strong');
+        titleRow.style.display = 'flex';
+        titleRow.style.justifyContent = 'space-between';
+        titleRow.style.alignItems = 'center';
+        titleRow.style.gap = '0.35rem';
         strong.textContent = String(node.label || node.id);
         titleRow.appendChild(strong);
+        if (childCount > 0) {
+          const diveChip = mk('span');
+          diveChip.className = 'subbox-chip';
+          diveChip.style.cursor = 'pointer';
+          diveChip.textContent = '↘ Dive (' + childCount + ')';
+          diveChip.addEventListener('click', ev => {
+            if (ev && ev.stopPropagation) ev.stopPropagation();
+            this.selectNode(node.id, false);
+          });
+          titleRow.appendChild(diveChip);
+        } else if (this.historyStack.length > 0 && String(node.id) === String(this.currentId)) {
+          const ascChip = mk('span');
+          ascChip.className = 'subbox-chip';
+          ascChip.style.cursor = 'pointer';
+          ascChip.textContent = '⬅ Ascend [W]';
+          ascChip.addEventListener('click', ev => {
+            if (ev && ev.stopPropagation) ev.stopPropagation();
+            ascendBoxLayer();
+          });
+          titleRow.appendChild(ascChip);
+        }
         box.appendChild(titleRow);
         const sub = mk('div');
         sub.style.fontSize = '0.73rem';
@@ -2329,10 +2454,25 @@ def render_standalone_browser_html(default_api_base: str = "", dataset: dict[str
           }
           box.appendChild(preview);
         }
-        box.addEventListener('click', () => this.selectNode(node.id, false));
+        box.addEventListener('click', () => {
+          this.inspectObjectInOuterFrame(node.id);
+          this.syncSelectedBoxVisual(node.id);
+        });
+        box.addEventListener('dblclick', () => {
+          if (childCount > 0 || String(node.id) !== String(this.currentId)) this.selectNode(node.id, false);
+        });
         box.addEventListener('wheel', ev => {
-          if (ev.deltaY > 15 && childCount > 0) this.selectNode(node.id, false);
-          else if (ev.deltaY < -15 && this.historyStack.length > 0) ascendBoxLayer();
+          if (!ev || !(ev.ctrlKey || ev.altKey)) return;
+          if (ev.preventDefault) ev.preventDefault();
+          const t = nowMs();
+          if (t - this.lastWheelZoomMs < 250) return;
+          if (ev.deltaY > 15 && (childCount > 0 || String(node.id) !== String(this.currentId))) {
+            this.lastWheelZoomMs = t;
+            this.selectNode(node.id, false);
+          } else if (ev.deltaY < -15 && this.historyStack.length > 0) {
+            this.lastWheelZoomMs = t;
+            ascendBoxLayer();
+          }
         });
         return box;
       },
@@ -2391,10 +2531,10 @@ def render_standalone_browser_html(default_api_base: str = "", dataset: dict[str
           }
           if (node.kind === 'ai_agent_unit' || String(node.id || '').startsWith('swarm-')) {
             linksEl.appendChild(this.makeNodeButton('⚡ Cast Swarm Ability (μ/σ)', 'Non-Blocking HUD', () => toggleNanomachineSwarmHud(true)));
-            toggleNanomachineSwarmHud(true);
           }
         }
         this.renderConnectionRibbon(targetId);
+        this.syncSelectedBoxVisual(targetId);
         syncUnifiedToolDockContext(targetId);
       },
 
@@ -2421,18 +2561,20 @@ def render_standalone_browser_html(default_api_base: str = "", dataset: dict[str
         if (childEl && childEl.setAttribute) childEl.setAttribute('data-zoom-density', this.zoomDensity);
         childEl.replaceChildren();
         minimapEl.replaceChildren();
-        if (this.zoomDensity === 'overview_all' && targetId !== '__never__') {
+          if (this.zoomDensity === 'overview_all' && targetId !== '__never__') {
           const allNodes = (this.catalog && this.catalog.nodes) || [];
           const vis = allNodes.slice(0, this.maxBoxesPerPage);
           vis.forEach(cn => {
             childEl.appendChild(this.makeEncapsulatedLayerBox(cn));
             minimapEl.appendChild(this.makeNodeButton(String(cn.id), '', () => this.inspectObjectInOuterFrame(cn.id)));
           });
+          this.syncSelectedBoxVisual(this.selectedBoxId);
           this.updateFpsBadge(nowMs() - t0, vis.length);
           return;
         }
         if (!childIds.length) {
           childEl.appendChild(this.makeEncapsulatedLayerBox(node));
+          this.syncSelectedBoxVisual(this.selectedBoxId);
           this.updateFpsBadge(nowMs() - t0, 1);
         } else {
           const limitChildren = childIds.length > this.maxBoxesPerPage && !this.showAllChildren;
@@ -2453,6 +2595,7 @@ def render_standalone_browser_html(default_api_base: str = "", dataset: dict[str
             });
             childEl.appendChild(showAllButton);
           }
+          this.syncSelectedBoxVisual(this.selectedBoxId);
           this.updateFpsBadge(nowMs() - t0, visibleChildIds.length);
         }
       }
@@ -2461,6 +2604,9 @@ def render_standalone_browser_html(default_api_base: str = "", dataset: dict[str
     let liveMetricsPollInterval = null;
     let liveMetricsPollGeneration = 0;
     let liveMetricsRefreshPending = false;
+    let ecosystemOverlayPollTimer = null;
+    let lastSeenEcosystemRevision = null;
+    let ecosystemPollBusy = false;
 
     function applyGameSystemTheme(themeId) {
       SpatialGraphAdapter.gameTheme = String(themeId || 'terran_command');
@@ -2684,7 +2830,29 @@ def render_standalone_browser_html(default_api_base: str = "", dataset: dict[str
       }
     }
 
-    async function loadUnifiedClusterAndSubsystemGraph() {
+    function startEcosystemOverlayPoller() {
+      if (ecosystemOverlayPollTimer || typeof setInterval !== 'function' || typeof fetch !== 'function' || !window.location || !window.location.hostname) return;
+      ecosystemOverlayPollTimer = setInterval(async () => {
+        if (ecosystemPollBusy || SpatialGraphAdapter.mode !== 'REMOTE_BACKEND_API') return;
+        ecosystemPollBusy = true;
+        try {
+          const res = await fetch((SpatialGraphAdapter.apiBase || '') + '/api/v1/graph/catalog', {cache: 'no-store'});
+          const data = await res.json();
+          const nextRev = data && data.ecosystem_revision ? String(data.ecosystem_revision) : '';
+          if (nextRev && nextRev !== lastSeenEcosystemRevision) {
+            lastSeenEcosystemRevision = nextRev;
+            await loadUnifiedClusterAndSubsystemGraph(true);
+          }
+        } catch (_err) {
+        } finally {
+          ecosystemPollBusy = false;
+        }
+      }, 3000);
+    }
+
+    async function loadUnifiedClusterAndSubsystemGraph(preserveFocus) {
+      const prevId = preserveFocus ? SpatialGraphAdapter.currentId : null;
+      const prevStack = preserveFocus ? [...(SpatialGraphAdapter.historyStack || [])] : [];
       SpatialGraphAdapter.mode = 'REMOTE_BACKEND_API';
       if ($('adapter-select')) $('adapter-select').value = 'REMOTE_BACKEND_API';
       await SpatialGraphAdapter.loadCatalog();
@@ -2839,6 +3007,12 @@ def render_standalone_browser_html(default_api_base: str = "", dataset: dict[str
         if (!rootNode.drilldown_children.includes('hub-opscryer-portals')) {
           rootNode.drilldown_children.unshift('hub-opscryer-portals');
         }
+        if (byId.has('meshworks-coordinator') && !rootNode.drilldown_children.includes('meshworks-coordinator')) {
+          rootNode.drilldown_children.unshift('meshworks-coordinator');
+        }
+        if (byId.has('brain-skills-hub') && !rootNode.drilldown_children.includes('brain-skills-hub')) {
+          rootNode.drilldown_children.unshift('brain-skills-hub');
+        }
       }
       const liveCurrencies = ((SpatialGraphAdapter.catalog && SpatialGraphAdapter.catalog.rts_currencies) || []).map(c => {
         if (c.currency_id === 'renovate_failures' && (c.display_value === 'Unavailable' || !(c.dropdown_items || []).length)) {
@@ -2859,12 +3033,23 @@ def render_standalone_browser_html(default_api_base: str = "", dataset: dict[str
       });
       SpatialGraphAdapter.catalog = {...SpatialGraphAdapter.catalog, nodes: baseNodes, edges: baseEdges, rts_currencies: liveCurrencies};
       SpatialGraphAdapter.rebuildFastIndex();
-      SpatialGraphAdapter.historyStack = [];
-      SpatialGraphAdapter.currentId = null;
-      if ($('adapter-mode-badge')) $('adapter-mode-badge').textContent = 'UNIFIED_CLUSTER_GRAPH (' + baseNodes.length + ' NODES)';
+      const ecoRev = String((SpatialGraphAdapter.catalog && SpatialGraphAdapter.catalog.ecosystem_revision) || '');
+      if (ecoRev) lastSeenEcosystemRevision = ecoRev;
+      if ($('adapter-mode-badge')) {
+        $('adapter-mode-badge').textContent = 'UNIFIED_CLUSTER_GRAPH (' + baseNodes.length + ' NODES)' + (ecoRev ? (' • ECO ' + ecoRev) : '');
+      }
       SpatialGraphAdapter.renderCurrenciesBar();
-      const entryId = byId.has('cluster-home') ? 'cluster-home' : SpatialGraphAdapter.entryNodeId();
-      await SpatialGraphAdapter.selectNode(entryId, true);
+      if (preserveFocus && prevId && byId.has(prevId)) {
+        SpatialGraphAdapter.historyStack = prevStack.filter(id => byId.has(id));
+        SpatialGraphAdapter.currentId = prevId;
+        await SpatialGraphAdapter.selectNode(prevId, true);
+      } else {
+        SpatialGraphAdapter.historyStack = [];
+        SpatialGraphAdapter.currentId = null;
+        const entryId = byId.has('cluster-home') ? 'cluster-home' : SpatialGraphAdapter.entryNodeId();
+        await SpatialGraphAdapter.selectNode(entryId, true);
+      }
+      startEcosystemOverlayPoller();
     }
 
     const NANOMACHINE_ABILITY_STATS = {
@@ -3157,8 +3342,9 @@ def render_standalone_browser_html(default_api_base: str = "", dataset: dict[str
       if (k === 'qa') askPluggableBackend();
     }
     function enterSelectedBoxLayer() {
-      const t = SpatialGraphAdapter.selectedBoxId || SpatialGraphAdapter.currentId;
-      if (t) SpatialGraphAdapter.selectNode(t, false);
+      const t = SpatialGraphAdapter.selectedBoxId;
+      if (!t || t === SpatialGraphAdapter.currentId) return;
+      SpatialGraphAdapter.selectNode(t, false);
     }
     function ascendBoxLayer() {
       if (SpatialGraphAdapter.historyStack.length > 0) travelToAncestor(SpatialGraphAdapter.historyStack.length - 1);
@@ -3235,6 +3421,18 @@ def render_standalone_browser_html(default_api_base: str = "", dataset: dict[str
       if (focusId && SpatialGraphAdapter.getNode(focusId)) await SpatialGraphAdapter.selectNode(focusId, false);
       $('browser-qa-output').textContent = JSON.stringify({adapter_mode: SpatialGraphAdapter.mode, query: q, matched_node_id: focusId, jev_policy_id: sim.policy_id, required_it_tickets: sim.required_it_tickets});
     }
+    function handleSpatialKeydown(ev) {
+      if (!ev || ev.ctrlKey || ev.metaKey || ev.altKey) return;
+      const tgt = ev.target;
+      const tag = tgt && tgt.tagName ? String(tgt.tagName).toUpperCase() : '';
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (tgt && tgt.isContentEditable)) return;
+      const k = String(ev.key || '');
+      if (k === 'q' || k === 'Q') enterSelectedBoxLayer();
+      else if (k === 'w' || k === 'W' || k === 'Escape' || k === 'Backspace') ascendBoxLayer();
+    }
+    if (typeof document !== 'undefined' && document.addEventListener) {
+      document.addEventListener('keydown', handleSpatialKeydown);
+    }
     SpatialGraphAdapter.init();
     window.SpatialGraphAdapter = SpatialGraphAdapter;
   </script>
@@ -3272,7 +3470,7 @@ def export_standalone_browser_bundle(output_dir: Path, default_api_base: str = "
             "# Spatial Graph Browser (Piece A — Standalone Frontend Bundle)\n\n"
             "This bundle contains **only** the Frontend Spatial Information Tree & RTS/TBS Browser.\n"
             "- **Zero Backend Code Included:** Runs out-of-the-box in `STANDALONE_MOCK` mode using `sample-graph-data.json`.\n"
-            "- **RTS/TBS Top-Level Simplicity:** 7 Click-Dropdown Currencies & Food/Supply in the Top Bar, Big Main Pane of Encapsulated Boxes (Click to inspect, Scroll In to dive deeper), and Classic RTS/TBS Bottom Perimeter Console.\n"
+            "- **RTS/TBS Top-Level Simplicity:** 7 Click-Dropdown Currencies & Food/Supply in the Top Bar, Big Main Pane of Encapsulated Boxes (Click to inspect, Double-Click / [Q] / Ctrl+Scroll to dive deeper), and Classic RTS/TBS Bottom Perimeter Console.\n"
             "- **Optional Remote Backend Connection:** Switch the top-bar adapter to `REMOTE_BACKEND_API` and point to any `SpatialGraphContract v1` server.\n"
         )
 
@@ -3355,6 +3553,126 @@ def build_two_act_browser_status(act: int = 1) -> dict[str, Any]:
     }
 
 
+def _resolve_ecosystem_paths() -> dict[str, Path]:
+    """Resolve Brain and Meshworks artifact paths for optional live ecosystem graph overlay."""
+    brain_root = Path(
+        os.environ.get("OPSCRYER_BRAIN_ROOT")
+        or (Path(__file__).resolve().parent.parent / "brain")
+    )
+    manifest_override = os.environ.get("OPSCRYER_BRAIN_MANIFEST")
+    if manifest_override:
+        manifest_path = Path(manifest_override)
+    else:
+        data_manifest = brain_root / "data" / "skills-manifest.json"
+        flat_manifest = brain_root / "skills-manifest.json"
+        # Prefer Brain's canonical data/skills-manifest.json, falling back to flat test fixture layout.
+        if data_manifest.is_file():
+            manifest_path = data_manifest
+        elif flat_manifest.is_file():
+            manifest_path = flat_manifest
+        else:
+            manifest_path = data_manifest
+    return {
+        "manifest": manifest_path,
+        "state": Path(os.environ.get("OPSCRYER_BRAIN_STATE") or (brain_root / "data" / "skill_watch_state.json")),
+        "alerts": Path(os.environ.get("OPSCRYER_BRAIN_ALERTS") or (brain_root / "data" / "skill_watch_alerts.json")),
+        "meshworks_graph": Path(os.environ.get("OPSCRYER_MESHWORKS_GRAPH") or (brain_root / "data" / "knowledge-graph.json")),
+    }
+
+
+def _ecosystem_mtime_signature() -> tuple[tuple[str, str, int], ...]:
+    paths = _resolve_ecosystem_paths()
+    return tuple(
+        (key, str(path), path.stat().st_mtime_ns if path.is_file() else -1)
+        for key, path in sorted(paths.items())
+    )
+
+
+def _apply_optional_ecosystem_overlay(catalog: dict[str, Any]) -> dict[str, Any]:
+    """Overlay Brain/Meshworks live nodes onto catalog only when OPSCRYER_ECOSYSTEM_OVERLAY=1."""
+    if os.environ.get("OPSCRYER_ECOSYSTEM_OVERLAY") != "1":
+        return catalog
+    from opscryer.bridge.opscryer_bridge import overlay_ecosystem_onto_catalog
+
+    paths = _resolve_ecosystem_paths()
+    return overlay_ecosystem_onto_catalog(
+        catalog,
+        brain_manifest_path=paths["manifest"],
+        brain_state_path=paths["state"],
+        brain_alerts_path=paths["alerts"],
+        meshworks_graph_path=paths["meshworks_graph"],
+    )
+
+
+def _build_unified_gateway_catalog(*, include_ecosystem: bool) -> dict[str, Any]:
+    """Build unified cluster + demo/Jev spatial catalog, optionally overlaid with Brain/Meshworks."""
+    from cluster_diff_engine import DEFAULT_CATALOG_PATH
+    from cluster_harvester import build_live_cluster_spatial_catalog
+
+    cluster_catalog = (
+        json.loads(DEFAULT_CATALOG_PATH.read_text(encoding="utf-8"))
+        if DEFAULT_CATALOG_PATH.is_file()
+        else build_live_cluster_spatial_catalog()
+    )
+    sample_path = Path(__file__).with_name("sample-graph-data.json")
+    sample_catalog = json.loads(sample_path.read_text(encoding="utf-8")) if sample_path.is_file() else {}
+
+    merged = deepcopy(cluster_catalog)
+    merged_nodes: list[dict[str, Any]] = [
+        deepcopy(n) for n in (merged.get("nodes") or []) if isinstance(n, dict) and n.get("id")
+    ]
+    by_id: dict[str, dict[str, Any]] = {str(n["id"]): n for n in merged_nodes}
+
+    for sample_node in (sample_catalog.get("nodes") or []):
+        if not isinstance(sample_node, dict):
+            continue
+        nid = str(sample_node.get("id") or "")
+        if not nid or nid in by_id:
+            continue
+        cloned = deepcopy(sample_node)
+        merged_nodes.append(cloned)
+        by_id[nid] = cloned
+
+    merged_edges: list[dict[str, str]] = []
+    seen_edges: set[tuple[str, str, str]] = set()
+    for edge in [*(merged.get("edges") or []), *(sample_catalog.get("edges") or [])]:
+        if not isinstance(edge, dict):
+            continue
+        src = str(edge.get("source") or "")
+        dst = str(edge.get("target") or "")
+        rel = str(edge.get("relation") or "related_to")
+        key = (src, dst, rel)
+        # Deduplicate directed labeled edges across cluster and demo catalogs.
+        if src in by_id and dst in by_id and key not in seen_edges:
+            seen_edges.add(key)
+            merged_edges.append({"source": src, "target": dst, "relation": rel})
+
+    if "deploy-demo-k8s" in by_id and "cluster-home" in by_id:
+        demo_k8s = by_id["deploy-demo-k8s"]
+        children = list(demo_k8s.get("drilldown_children") or [])
+        if "cluster-home" not in children:
+            children.append("cluster-home")
+            demo_k8s["drilldown_children"] = children
+        host_key = ("deploy-demo-k8s", "cluster-home", "hosts_cluster")
+        if host_key not in seen_edges:
+            seen_edges.add(host_key)
+            merged_edges.append({"source": "deploy-demo-k8s", "target": "cluster-home", "relation": "hosts_cluster"})
+
+    sample_archetypes = sample_catalog.get("object_archetypes")
+    if isinstance(sample_archetypes, dict):
+        merged["object_archetypes"] = {**deepcopy(sample_archetypes), **(merged.get("object_archetypes") or {})}
+    if not merged.get("jev_decision_tree") and sample_catalog.get("jev_decision_tree"):
+        merged["jev_decision_tree"] = deepcopy(sample_catalog["jev_decision_tree"])
+
+    merged["nodes"] = merged_nodes
+    merged["edges"] = merged_edges
+    merged["node_count"] = len(merged_nodes)
+    merged["edge_count"] = len(merged_edges)
+    if include_ecosystem:
+        return _apply_optional_ecosystem_overlay(merged)
+    return merged
+
+
 def _build_frontend_handler(default_api_base: str = "",
                             backend_engine: Any = None) -> type[http.server.BaseHTTPRequestHandler]:
     """Build the local HTML and read-only JSON handler using stdlib only.
@@ -3374,15 +3692,38 @@ def _build_frontend_handler(default_api_base: str = "",
 
     class _FrontendHandler(http.server.BaseHTTPRequestHandler):
         _backend_engine: Any = backend_engine
+        _explicit_backend_engine: bool = backend_engine is not None
+        _ecosystem_mtime_sig: Any = None
+        _unified_catalog_cache: dict[str, Any] | None = None
+        _unified_catalog_sig: Any = None
+        _engine_lock = threading.RLock()
         _server_start_time: float = _gateway_start_time
         _readiness_override: bool | None = None
 
         @classmethod
+        def _get_unified_catalog(cls, *, include_ecosystem: bool) -> dict[str, Any]:
+            cache_sig = ("_ON_", _ecosystem_mtime_signature()) if include_ecosystem else ("_OFF_", ())
+            with cls._engine_lock:
+                if cls._unified_catalog_cache is None or cls._unified_catalog_sig != cache_sig:
+                    cls._unified_catalog_cache = _build_unified_gateway_catalog(include_ecosystem=include_ecosystem)
+                    cls._unified_catalog_sig = cache_sig
+                return cls._unified_catalog_cache
+
+        @classmethod
         def _get_backend_engine(cls) -> Any:
-            if cls._backend_engine is None:
-                from opscryer_backend import KnowledgeGraphBackendEngine
-                cls._backend_engine = KnowledgeGraphBackendEngine()
-            return cls._backend_engine
+            from opscryer_backend import KnowledgeGraphBackendEngine
+
+            with cls._engine_lock:
+                if cls._explicit_backend_engine and cls._backend_engine is not None:
+                    return cls._backend_engine
+
+                overlay_active = os.environ.get("OPSCRYER_ECOSYSTEM_OVERLAY") == "1"
+                cache_sig = ("_ON_", _ecosystem_mtime_signature()) if overlay_active else ("_OFF_", ())
+                if cls._backend_engine is None or cls._ecosystem_mtime_sig != cache_sig:
+                    unified = cls._get_unified_catalog(include_ecosystem=overlay_active)
+                    cls._backend_engine = KnowledgeGraphBackendEngine(deepcopy(unified))
+                    cls._ecosystem_mtime_sig = cache_sig
+                return cls._backend_engine
 
         @classmethod
         def _evaluate_readiness(cls) -> tuple[int, dict[str, Any]]:
@@ -3469,13 +3810,7 @@ def _build_frontend_handler(default_api_base: str = "",
                 record_http_request(method=getattr(self, "command", "GET"), endpoint=endpoint, status=status)
             except Exception:
                 pass
-            self.send_response(status)
-            self.send_header("Content-Type", content_type)
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
-
-            # Structured request logging
+            # Log completion record before writing response bytes so clients reading immediately never race the logger.
             cmd = getattr(self, "command", "GET")
             path = getattr(self, "path", "/")
             log_level = logging.WARNING if status >= 400 else logging.INFO
@@ -3492,8 +3827,25 @@ def _build_frontend_handler(default_api_base: str = "",
                     "subsystem": "gateway",
                 }
             )
+            self.send_response(status)
+            self.send_header("Content-Type", content_type)
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("X-Frame-Options", "DENY")
+            self.send_header("Referrer-Policy", "no-referrer")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
 
         def do_HEAD(self) -> None:
+            if not _is_permitted_gateway_host(self.headers.get("Host", "")):
+                self.send_response(403)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("X-Content-Type-Options", "nosniff")
+                self.send_header("X-Frame-Options", "DENY")
+                self.send_header("Referrer-Policy", "no-referrer")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
             url = urlsplit(self.path)
             if url.path in ("/healthz", "/readyz", "/metrics"):
                 if url.path == "/healthz":
@@ -3514,16 +3866,25 @@ def _build_frontend_handler(default_api_base: str = "",
                     status = 200
                 self.send_response(status)
                 self.send_header("Content-Type", ct)
+                self.send_header("X-Content-Type-Options", "nosniff")
+                self.send_header("X-Frame-Options", "DENY")
+                self.send_header("Referrer-Policy", "no-referrer")
                 self.send_header("Content-Length", str(body_len))
                 self.end_headers()
                 return
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("X-Frame-Options", "DENY")
+            self.send_header("Referrer-Policy", "no-referrer")
             self.send_header("Content-Length", "0")
             self.end_headers()
 
         def do_GET(self) -> None:
             try:
+                if not _is_permitted_gateway_host(self.headers.get("Host", "")):
+                    self._send_json(403, {"error": "Forbidden Host header"})
+                    return
                 url = urlsplit(self.path)
 
                 # Container Lifecycle Probes (Kubernetes Liveness / Readiness) & Prometheus Scrape
@@ -3813,9 +4174,12 @@ def _build_frontend_handler(default_api_base: str = "",
                     from cluster_harvester import build_live_cluster_spatial_catalog
                     from live_currencies import build_enriched_live_currencies
 
-                    payload = (json.loads(DEFAULT_CATALOG_PATH.read_text(encoding="utf-8"))
-                               if DEFAULT_CATALOG_PATH.is_file()
-                               else build_live_cluster_spatial_catalog())
+                    if os.environ.get("OPSCRYER_ECOSYSTEM_OVERLAY") == "1" and query.get("live", ["0"])[0] != "1":
+                        payload = deepcopy(self._get_unified_catalog(include_ecosystem=True))
+                    else:
+                        payload = (json.loads(DEFAULT_CATALOG_PATH.read_text(encoding="utf-8"))
+                                   if DEFAULT_CATALOG_PATH.is_file()
+                                   else build_live_cluster_spatial_catalog())
                     if query.get("live", ["0"])[0] == "1":
                         from live_metrics_poller import poll_live_cluster_metrics
 
@@ -3831,6 +4195,8 @@ def _build_frontend_handler(default_api_base: str = "",
                                     if key not in {"node_id", "name"}}
                     else:
                         payload["rts_currencies"] = build_enriched_live_currencies()
+                    if os.environ.get("OPSCRYER_ECOSYSTEM_OVERLAY") == "1" and query.get("live", ["0"])[0] == "1":
+                        payload = _apply_optional_ecosystem_overlay(payload)
                 elif url.path == "/api/v1/live-metrics":
                     from live_metrics_poller import poll_live_cluster_metrics
 
@@ -4151,27 +4517,41 @@ def _build_frontend_handler(default_api_base: str = "",
                             self._send_json(400, {"error": "Invalid Last-Event-ID header"})
                             return
 
-                    self.send_response(200)
-                    self.send_header("Content-Type", "text/event-stream; charset=utf-8")
-                    self.send_header("Cache-Control", "no-cache")
-                    if parsed_max_events is not None:
-                        self.send_header("Connection", "close")
-                        self.close_connection = True
-                    else:
-                        self.send_header("Connection", "keep-alive")
-                    self.send_header("X-Accel-Buffering", "no")
-                    self.end_headers()
+                    global _SSE_ACTIVE_STREAMS
+                    with _SSE_STREAM_LOCK:
+                        if _SSE_ACTIVE_STREAMS >= MAX_CONCURRENT_SSE_STREAMS:
+                            self._send_json(503, {"error": "Too many concurrent event streams"})
+                            return
+                        _SSE_ACTIVE_STREAMS += 1
 
                     try:
-                        for chunk in stream_events_generator(
-                            since_seq=since_seq,
-                            topics=parsed_topics,
-                            max_events=parsed_max_events,
-                        ):
-                            self.wfile.write(chunk.encode("utf-8"))
-                            self.wfile.flush()
-                    except (BrokenPipeError, ConnectionResetError):
-                        pass
+                        self.send_response(200)
+                        self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+                        self.send_header("X-Content-Type-Options", "nosniff")
+                        self.send_header("X-Frame-Options", "DENY")
+                        self.send_header("Referrer-Policy", "no-referrer")
+                        self.send_header("Cache-Control", "no-cache")
+                        if parsed_max_events is not None:
+                            self.send_header("Connection", "close")
+                            self.close_connection = True
+                        else:
+                            self.send_header("Connection", "keep-alive")
+                        self.send_header("X-Accel-Buffering", "no")
+                        self.end_headers()
+
+                        try:
+                            for chunk in stream_events_generator(
+                                since_seq=since_seq,
+                                topics=parsed_topics,
+                                max_events=parsed_max_events,
+                            ):
+                                self.wfile.write(chunk.encode("utf-8"))
+                                self.wfile.flush()
+                        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError, OSError):
+                            self.close_connection = True
+                    finally:
+                        with _SSE_STREAM_LOCK:
+                            _SSE_ACTIVE_STREAMS = max(0, _SSE_ACTIVE_STREAMS - 1)
                     return
                 elif url.path == "/api/v1/system-context":
                     from system_context import build_system_context
@@ -4228,6 +4608,9 @@ def _build_frontend_handler(default_api_base: str = "",
 
         def do_POST(self) -> None:
             try:
+                if not _is_permitted_gateway_host(self.headers.get("Host", "")):
+                    self._send_json(403, {"error": "Forbidden Host header"})
+                    return
                 url = urlsplit(self.path)
                 if url.path in ("/healthz", "/readyz", "/metrics"):
                     self._send_json(405, {"error": "method not allowed", "allowed_method": "GET"})
@@ -4250,6 +4633,7 @@ def _build_frontend_handler(default_api_base: str = "",
                     "/api/v1/flight-recorder/export",
                     "/api/v1/flight-recorder/replay",
                     "/api/v1/nanomachine-swarm/cast",
+                    "/api/v1/cast/hydrogen",
                 }
                 if url.path not in supported_post_routes:
                     if url.path.startswith("/api/v1/"):
@@ -4260,6 +4644,11 @@ def _build_frontend_handler(default_api_base: str = "",
 
                 if url.query:
                     self._send_json(400, {"error": "Invalid query parameters"})
+                    return
+
+                post_ok, post_err_code, post_err_msg = _validate_post_request_security(self.headers)
+                if not post_ok:
+                    self._send_json(post_err_code, {"error": post_err_msg})
                     return
 
                 content_length_header = self.headers.get("Content-Length")
@@ -4360,6 +4749,13 @@ def _build_frontend_handler(default_api_base: str = "",
                     self._send_json(status, payload)
                     return
 
+                if url.path == "/api/v1/cast/hydrogen":
+                    from opscryer.bridge.hydrogen_cast import handle_hydrogen_cast_request
+
+                    status, payload = handle_hydrogen_cast_request(body)
+                    self._send_json(status, payload)
+                    return
+
                 if url.path == "/api/v1/nanomachine-swarm/cast":
                     status, payload = evaluate_nanomachine_swarm_cast(body)
                     self._send_json(status, payload)
@@ -4379,7 +4775,7 @@ def _build_frontend_handler(default_api_base: str = "",
                     exc_info=True,
                     extra={"path": self.path, "status_code": 500, "error": str(exc), "subsystem": "gateway"}
                 )
-                self._send_json(500, {"error": f"Internal server error: {exc}"})
+                self._send_json(500, {"error": "Internal server error"})
 
     return _FrontendHandler
 

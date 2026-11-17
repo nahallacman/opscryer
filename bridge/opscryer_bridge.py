@@ -1,37 +1,28 @@
-"""OpsCryer Bridge: translates brain state into spatial graph catalogs."""
+# SPDX-License-Identifier: Apache-2.0
+"""Backwards-compatible shim for ``opscryer.bridge.opscryer_bridge``."""
 
 from __future__ import annotations
 
-import argparse
-from datetime import datetime, timezone
-import json
-from pathlib import Path
-from typing import Any, Dict, List, Optional
+from opscryer.bridge.opscryer_bridge import (
+    CONTRACT_VERSION,
+    _CATEGORY_TO_DOMAIN,
+    _load_json_safe,
+    _map_meshworks_kind,
+    _resolve_meshworks_node_id,
+    _safe_id,
+    build_spatial_contract_from_ecosystem,
+    build_spatial_graph_catalog,
+    main,
+    overlay_ecosystem_onto_catalog,
+)
 
-
-def build_spatial_graph_catalog(
-    tasks: Optional[List[Dict[str, Any]]] = None,
-    mrs: Optional[List[Dict[str, Any]]] = None,
-    projects: Optional[List[Dict[str, Any]]] = None,
-) -> Dict[str, Any]:
-    """Generate a spatial graph catalog dictionary."""
-    return {
-        "generated_at": datetime.now(timezone.utc).isoformat(),
-        "tasks": tasks or [],
-        "merge_requests": mrs or [],
-        "projects": projects or [],
-    }
-
-
-def main() -> None:
-    parser = argparse.ArgumentParser(description="OpsCryer bridge")
-    parser.add_argument("--catalog", action="store_true", help="Print spatial graph catalog")
-    args = parser.parse_args()
-
-    if args.catalog:
-        catalog = build_spatial_graph_catalog()
-        print(json.dumps(catalog, indent=2))
-
+__all__ = [
+    "CONTRACT_VERSION",
+    "build_spatial_contract_from_ecosystem",
+    "build_spatial_graph_catalog",
+    "main",
+    "overlay_ecosystem_onto_catalog",
+]
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
