@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: Apache-2.0
+# OpsCryer browser container — standalone spatial topology frontend on :8088
+FROM python:3.11-slim
+
+WORKDIR /opscryer
+
+# Copy the OpsCryer browser and its stdlib-only runtime
+COPY opscryer_browser.py ./
+
+# No external dependencies — opscryer_browser.py uses only Python stdlib
+
+EXPOSE 8088
+
+# Serve the OpsCryer browser on all interfaces so Backstage can reach it
+CMD ["python3", "opscryer_browser.py", "--serve", "--host", "0.0.0.0", "--port", "8088"]
