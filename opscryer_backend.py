@@ -14,6 +14,7 @@ import importlib
 from ipaddress import IPv4Address, ip_address
 import json
 import math
+import os
 from pathlib import Path
 import re
 from urllib.parse import parse_qs, urlsplit
@@ -247,13 +248,33 @@ def _jev_tree():
             "nodes": nodes}
 
 
+def _resolve_external_backend_graph_path() -> Path | None:
+    """Resolve optional external graph path outside the OpsCryer tool repository."""
+    raw = os.environ.get("OPSCRYER_GRAPH_FILE", "").strip()
+    if not raw:
+        return None
+    candidate = Path(raw).expanduser()
+    if candidate.is_symlink():
+        raise ValueError("External graph file cannot be a symbolic link")
+    resolved = candidate.resolve()
+    repo_root = Path(__file__).resolve().parent
+    # Enforce strict tool-repo boundary before checking regular-file existence.
+    if resolved == repo_root or resolved.is_relative_to(repo_root):
+        raise ValueError(
+            "TOOL_REPO_GRAPH_PATH_BLOCKED: External graph file must reside outside the OpsCryer tool repository"
+        )
+    if not resolved.is_file():
+        raise FileNotFoundError(f"External graph file not found: {resolved}")
+    return resolved
+
+
 class KnowledgeGraphBackendEngine:
     """Own a validated graph snapshot; all public results are detached copies."""
 
     def __init__(self, catalog=None):
         if catalog is None:
-            catalog = json.loads(Path(__file__).with_name("sample-graph-data.json").read_text(
-                encoding="utf-8"))
+            graph_path = _resolve_external_backend_graph_path() or Path(__file__).with_name("sample-graph-data.json")
+            catalog = json.loads(graph_path.read_text(encoding="utf-8"))
         errors = validate_spatial_graph_contract(catalog)
         if errors:
             raise ValueError("; ".join(errors))

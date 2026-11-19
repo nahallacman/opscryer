@@ -3553,6 +3553,37 @@ def build_two_act_browser_status(act: int = 1) -> dict[str, Any]:
     }
 
 
+EXTERNAL_GRAPH_FILE_ENV = "OPSCRYER_GRAPH_FILE"
+
+
+def resolve_external_graph_path(explicit_path: Path | None = None) -> Path | None:
+    """Validate and resolve an optional external Knowledge Graph file outside the OpsCryer tool repo."""
+    raw = str(explicit_path).strip() if explicit_path is not None else os.environ.get(EXTERNAL_GRAPH_FILE_ENV, "").strip()
+    if not raw:
+        return None
+    candidate = Path(raw).expanduser()
+    if candidate.is_symlink():
+        raise ValueError("External graph file cannot be a symbolic link")
+    resolved = candidate.resolve()
+    repo_root = Path(__file__).resolve().parent
+    # Enforce tool-repo boundary before verifying regular-file existence on disk.
+    if resolved == repo_root or resolved.is_relative_to(repo_root):
+        raise ValueError(
+            "TOOL_REPO_GRAPH_PATH_BLOCKED: External graph file must reside outside the OpsCryer tool repository"
+        )
+    if not resolved.is_file():
+        raise FileNotFoundError(f"External graph file not found: {resolved}")
+    return resolved
+
+
+def _external_graph_mtime_signature() -> tuple[str, int] | None:
+    """Return ``(path, st_mtime_ns)`` when an external graph file is active, else None."""
+    ext_path = resolve_external_graph_path()
+    if ext_path is None:
+        return None
+    return (str(ext_path), ext_path.stat().st_mtime_ns)
+
+
 def _resolve_ecosystem_paths() -> dict[str, Path]:
     """Resolve Brain and Meshworks artifact paths for optional live ecosystem graph overlay."""
     brain_root = Path(
@@ -3608,14 +3639,34 @@ def _build_unified_gateway_catalog(*, include_ecosystem: bool) -> dict[str, Any]
     """Build unified cluster + demo/Jev spatial catalog, optionally overlaid with Brain/Meshworks."""
     from cluster_diff_engine import DEFAULT_CATALOG_PATH
     from cluster_harvester import build_live_cluster_spatial_catalog
+    from opscryer_backend import validate_spatial_graph_contract
+
+    sample_path = Path(__file__).with_name("sample-graph-data.json")
+    sample_catalog = json.loads(sample_path.read_text(encoding="utf-8")) if sample_path.is_file() else {}
+
+    ext_path = resolve_external_graph_path()
+    if ext_path is not None:
+        ext_doc = json.loads(ext_path.read_text(encoding="utf-8"))
+        errors = validate_spatial_graph_contract(ext_doc)
+        if errors:
+            raise ValueError("; ".join(errors))
+        merged = deepcopy(ext_doc)
+        sample_archetypes = sample_catalog.get("object_archetypes")
+        if isinstance(sample_archetypes, dict):
+            merged["object_archetypes"] = {**deepcopy(sample_archetypes), **(merged.get("object_archetypes") or {})}
+        if not merged.get("jev_decision_tree") and sample_catalog.get("jev_decision_tree"):
+            merged["jev_decision_tree"] = deepcopy(sample_catalog["jev_decision_tree"])
+        merged["node_count"] = len(merged.get("nodes") or [])
+        merged["edge_count"] = len(merged.get("edges") or [])
+        if include_ecosystem:
+            return _apply_optional_ecosystem_overlay(merged)
+        return merged
 
     cluster_catalog = (
         json.loads(DEFAULT_CATALOG_PATH.read_text(encoding="utf-8"))
         if DEFAULT_CATALOG_PATH.is_file()
         else build_live_cluster_spatial_catalog()
     )
-    sample_path = Path(__file__).with_name("sample-graph-data.json")
-    sample_catalog = json.loads(sample_path.read_text(encoding="utf-8")) if sample_path.is_file() else {}
 
     merged = deepcopy(cluster_catalog)
     merged_nodes: list[dict[str, Any]] = [
@@ -3702,7 +3753,11 @@ def _build_frontend_handler(default_api_base: str = "",
 
         @classmethod
         def _get_unified_catalog(cls, *, include_ecosystem: bool) -> dict[str, Any]:
-            cache_sig = ("_ON_", _ecosystem_mtime_signature()) if include_ecosystem else ("_OFF_", ())
+            cache_sig = (
+                "_ON_" if include_ecosystem else "_OFF_",
+                _ecosystem_mtime_signature() if include_ecosystem else (),
+                _external_graph_mtime_signature(),
+            )
             with cls._engine_lock:
                 if cls._unified_catalog_cache is None or cls._unified_catalog_sig != cache_sig:
                     cls._unified_catalog_cache = _build_unified_gateway_catalog(include_ecosystem=include_ecosystem)
@@ -3718,7 +3773,11 @@ def _build_frontend_handler(default_api_base: str = "",
                     return cls._backend_engine
 
                 overlay_active = os.environ.get("OPSCRYER_ECOSYSTEM_OVERLAY") == "1"
-                cache_sig = ("_ON_", _ecosystem_mtime_signature()) if overlay_active else ("_OFF_", ())
+                cache_sig = (
+                    "_ON_" if overlay_active else "_OFF_",
+                    _ecosystem_mtime_signature() if overlay_active else (),
+                    _external_graph_mtime_signature(),
+                )
                 if cls._backend_engine is None or cls._ecosystem_mtime_sig != cache_sig:
                     unified = cls._get_unified_catalog(include_ecosystem=overlay_active)
                     cls._backend_engine = KnowledgeGraphBackendEngine(deepcopy(unified))
@@ -4174,8 +4233,11 @@ def _build_frontend_handler(default_api_base: str = "",
                     from cluster_harvester import build_live_cluster_spatial_catalog
                     from live_currencies import build_enriched_live_currencies
 
-                    if os.environ.get("OPSCRYER_ECOSYSTEM_OVERLAY") == "1" and query.get("live", ["0"])[0] != "1":
-                        payload = deepcopy(self._get_unified_catalog(include_ecosystem=True))
+                    overlay_on = os.environ.get("OPSCRYER_ECOSYSTEM_OVERLAY") == "1"
+                    ext_graph_active = resolve_external_graph_path() is not None
+                    # Serve the unified gateway catalog whenever an external graph file is mounted or offline ecosystem overlay is enabled.
+                    if ext_graph_active or (overlay_on and query.get("live", ["0"])[0] != "1"):
+                        payload = deepcopy(self._get_unified_catalog(include_ecosystem=overlay_on))
                     else:
                         payload = (json.loads(DEFAULT_CATALOG_PATH.read_text(encoding="utf-8"))
                                    if DEFAULT_CATALOG_PATH.is_file()
@@ -4194,8 +4256,10 @@ def _build_frontend_handler(default_api_base: str = "",
                                     key: value for key, value in by_id[node["id"]].items()
                                     if key not in {"node_id", "name"}}
                     else:
-                        payload["rts_currencies"] = build_enriched_live_currencies()
-                    if os.environ.get("OPSCRYER_ECOSYSTEM_OVERLAY") == "1" and query.get("live", ["0"])[0] == "1":
+                        # Preserve custom currencies supplied by a mounted external graph file when non-empty.
+                        if not (ext_graph_active and isinstance(payload.get("rts_currencies"), list) and payload["rts_currencies"]):
+                            payload["rts_currencies"] = build_enriched_live_currencies()
+                    if overlay_on and query.get("live", ["0"])[0] == "1":
                         payload = _apply_optional_ecosystem_overlay(payload)
                 elif url.path == "/api/v1/live-metrics":
                     from live_metrics_poller import poll_live_cluster_metrics
@@ -4785,6 +4849,7 @@ def main(argv: list[str] | None = None) -> int:
         description="Piece A: Standalone Frontend Spatial Information Tree Browser (Zero Backend Coupling)"
     )
     parser.add_argument("--config", type=Path, default=None, help="Optional JSON/YAML runtime settings file")
+    parser.add_argument("--graph-file", type=Path, default=None, help="Optional external SpatialGraphContract v1 JSON file outside the OpsCryer repository")
     parser.add_argument("--export-bundle", type=Path, help="Export standalone static HTML/JSON frontend bundle to directory")
     parser.add_argument("--demo-json", action="store_true", help="Print the standalone hackathon demo dataset as JSON")
     parser.add_argument("--live-advisor", metavar="QUESTION", help="Print a grounded operational answer as JSON")
@@ -4795,6 +4860,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--host", default=os.environ.get("OPSCRYER_BIND_HOST", "127.0.0.1"), help="Bind host for --serve (default: 127.0.0.1)")
     parser.add_argument("--port", type=int, default=8088, help="Port for --serve (default: 8088)")
     args = parser.parse_args(argv)
+
+    try:
+        # Validate any explicit --graph-file or ambient OPSCRYER_GRAPH_FILE at startup before serving.
+        if args.graph_file is not None:
+            resolved_graph = resolve_external_graph_path(args.graph_file)
+            os.environ[EXTERNAL_GRAPH_FILE_ENV] = str(resolved_graph)
+        elif os.environ.get(EXTERNAL_GRAPH_FILE_ENV, "").strip():
+            resolve_external_graph_path()
+    except (OSError, ValueError) as exc:
+        parser.error(str(exc))
 
     cfg = load_browser_runtime_settings(args.config)
     effective_api_base = args.api_base or str(cfg.get("api_base_url", ""))

@@ -19,6 +19,9 @@ from opscryer_backend import validate_spatial_graph_contract
 
 
 SPDX_HEADER = "# SPDX-License-Identifier: Apache-2.0"
+_EXPECTED_DEMO_PIECE_ROLE = "PIECE_A_FRONTEND_SPATIAL_BROWSER_DEMO_DATASET"
+_FORBIDDEN_EXACT_GRAPH_FILENAMES = frozenset({"curated-graph.json", "knowledge-graph.json"})
+_FORBIDDEN_GRAPH_FILENAME = re.compile(r"(?:company|enterprise|internal|private|personal)[-_].*graph.*\.json$")
 _SUBJECT = re.compile(
     r"(?:feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)"
     r"(?:\([a-z0-9][a-z0-9._/-]*\))?!?: [^\s]+(?: [^\s]+)*")
@@ -216,7 +219,12 @@ def run_six_gate_prepush_audit(root_dir=None):
                 or git("rev-parse", "--show-prefix").strip()):
             raise ValueError("not repository root")
         subject = git("log", "-1", "--format=%s").decode("utf-8").removesuffix("\n")
-        gates["commit_subject"]["violations"] = int(not validate_conventional_commit_subject(subject))
+        parents = git("log", "-1", "--format=%P").decode("utf-8").strip().split()
+        # Permit genuine multi-parent GitLab merge commits on default branches while keeping single-parent commits strict.
+        if len(parents) >= 2 and subject.startswith("Merge branch "):
+            gates["commit_subject"]["violations"] = 0
+        else:
+            gates["commit_subject"]["violations"] = int(not validate_conventional_commit_subject(subject))
     except (OSError, ValueError, subprocess.SubprocessError):
         gates["commit_subject"]["errors"] += 1
 
@@ -226,6 +234,10 @@ def run_six_gate_prepush_audit(root_dir=None):
             relative = path.relative_to(root).as_posix().encode("utf-8")
             gates["opsec"]["violations"] += _opsec_count(relative + b"\n" + content)
             if path.name == ".env" or (path.name.startswith(".env.") and path.name != ".env.example"):
+                gates["opsec"]["violations"] += 1
+            # Reject live, company, enterprise, or personal Knowledge Graph files committed inside the tool repo.
+            lowered_name = path.name.lower()
+            if lowered_name in _FORBIDDEN_EXACT_GRAPH_FILENAMES or _FORBIDDEN_GRAPH_FILENAME.search(lowered_name):
                 gates["opsec"]["violations"] += 1
             if path.suffix.lower() == ".py":
                 lines = content.decode("utf-8-sig").splitlines()
@@ -237,7 +249,11 @@ def run_six_gate_prepush_audit(root_dir=None):
 
     try:
         catalog = json.loads((root / "sample-graph-data.json").read_text(encoding="utf-8"))
-        gates["graph_contract"]["violations"] = len(validate_spatial_graph_contract(catalog))
+        violations = len(validate_spatial_graph_contract(catalog))
+        # Ensure the checked-in demo fixture retains its generic Piece A role rather than being overwritten.
+        if isinstance(catalog, dict) and catalog.get("piece_role") != _EXPECTED_DEMO_PIECE_ROLE:
+            violations += 1
+        gates["graph_contract"]["violations"] = violations
     except (OSError, ValueError, RecursionError):
         gates["graph_contract"]["errors"] += 1
 

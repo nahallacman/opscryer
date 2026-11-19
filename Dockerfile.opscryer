@@ -5,7 +5,15 @@ FROM python:3.11-slim
 WORKDIR /opscryer
 
 # Copy the OpsCryer browser and its stdlib-only runtime
-COPY opscryer_browser.py ./
+COPY *.py ./
+COPY opscryer ./opscryer
+COPY sample-graph-data.json live-cluster-sanitized.json settled_production_systems.yaml ./
+
+# External Knowledge Graph mounts live under /data (never overwrite sample-graph-data.json).
+# Example:
+#   docker run -p 8088:8088 -v /host/path/knowledge-graph.json:/data/knowledge-graph.json:ro \
+#     -e OPSCRYER_GRAPH_FILE=/data/knowledge-graph.json opscryer:latest
+RUN mkdir -p /data
 
 # No external dependencies — opscryer_browser.py uses only Python stdlib
 

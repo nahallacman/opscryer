@@ -278,6 +278,38 @@ class TestSixGateAudit(unittest.TestCase):
         self.assertFalse(report["gates"]["spdx"]["passed"])
         self.assertNotIn("sensitive", json.dumps(report))
 
+    def test_forbidden_external_graph_filenames_fail_opsec_gate(self):
+        for forbidden_name in ("company-knowledge-graph.json", "nested/curated-graph.json", "knowledge-graph.json"):
+            with self.subTest(forbidden_name=forbidden_name):
+                self.write(forbidden_name, b"{}\n")
+                self.assert_failed_gate("opsec")
+                (self.root / forbidden_name).unlink()
+
+    def test_sample_graph_piece_role_tampering_fails_graph_contract_gate(self):
+        catalog = json.loads((ROOT / "sample-graph-data.json").read_text(encoding="utf-8"))
+        catalog["piece_role"] = "PIECE_B_HEADLESS_KNOWLEDGE_GRAPH"
+        self.write("sample-graph-data.json", json.dumps(catalog).encode("utf-8"))
+        self.assert_failed_gate("graph_contract")
+
+    def test_commit_subject_allows_multiparent_merge_but_rejects_single_parent_merge(self):
+        # Single-parent commit imitating a merge commit subject must still fail Conventional Commits.
+        self.git("-c", "core.hooksPath=", "commit", "--quiet", "--allow-empty", "-m", "Merge branch 'feat/x' into 'main'")
+        self.assert_failed_gate("commit_subject")
+
+        # Reset back to valid commit, create a topic branch, and verify a real 2-parent merge passes.
+        self.git("reset", "--hard", "HEAD~1", "--quiet")
+        default_branch = self.git("rev-parse", "--abbrev-ref", "HEAD").decode("utf-8").strip()
+        self.git("checkout", "-b", "feat/x", "--quiet")
+        self.write("feature.txt", b"external graph test\n")
+        self.git("add", "feature.txt")
+        self.git("-c", "core.hooksPath=", "commit", "--quiet", "-m", "feat: add external graph doc")
+        self.git("checkout", default_branch, "--quiet")
+        self.git(
+            "-c", "core.hooksPath=",
+            "merge", "--no-ff", "feat/x", "-m", "Merge branch 'feat/x' into 'main'", "--quiet",
+        )
+        self.assertTrue(self.audit()["passed"])
+
 
 if __name__ == "__main__":
     unittest.main()

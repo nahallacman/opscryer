@@ -30,31 +30,36 @@ def main() -> int:
         subprocess.run(["apt-get", "update", "-qq"], check=True)
         subprocess.run(["apt-get", "install", "-y", "-qq", "--no-install-recommends", "nodejs"], check=True)
     env = {**os.environ, "OPSCRYER_OFFLINE_ONLY": "1"}
+    env.pop("OPSCRYER_GRAPH_FILE", None)
+    saved_graph_file = os.environ.pop("OPSCRYER_GRAPH_FILE", None)
     os.environ["OPSCRYER_OFFLINE_ONLY"] = "1"
-
-    suite = unittest.defaultTestLoader.discover(str(REPO_ROOT / "tests"))
-    result = unittest.TextTestRunner(verbosity=2).run(suite)
-    if not result.wasSuccessful():
-        return 1
-
-    import golden_path_gates
-
-    cli_report = golden_path_gates.verify_public_cli_entrypoints(REPO_ROOT)
-    print("[CI] verify_public_cli_entrypoints:", json.dumps(cli_report), flush=True)
-    if not cli_report.get("passed"):
-        return 1
-
-    if (REPO_ROOT / ".git").exists() and shutil.which("git"):
-        gates_report = golden_path_gates.run_six_gate_prepush_audit(REPO_ROOT)
-        print("[CI] run_six_gate_prepush_audit:", json.dumps(gates_report), flush=True)
-        if not gates_report.get("passed"):
+    try:
+        suite = unittest.defaultTestLoader.discover(str(REPO_ROOT / "tests"))
+        result = unittest.TextTestRunner(verbosity=2).run(suite)
+        if not result.wasSuccessful():
             return 1
 
-    for act in ("1", "2"):
-        if _run_step([sys.executable, "opscryer_showcase.py", "--act", act, "--json"], env) != 0:
+        import golden_path_gates
+
+        cli_report = golden_path_gates.verify_public_cli_entrypoints(REPO_ROOT)
+        print("[CI] verify_public_cli_entrypoints:", json.dumps(cli_report), flush=True)
+        if not cli_report.get("passed"):
             return 1
 
-    return 0
+        if (REPO_ROOT / ".git").exists() and shutil.which("git"):
+            gates_report = golden_path_gates.run_six_gate_prepush_audit(REPO_ROOT)
+            print("[CI] run_six_gate_prepush_audit:", json.dumps(gates_report), flush=True)
+            if not gates_report.get("passed"):
+                return 1
+
+        for act in ("1", "2"):
+            if _run_step([sys.executable, "opscryer_showcase.py", "--act", act, "--json"], env) != 0:
+                return 1
+
+        return 0
+    finally:
+        if saved_graph_file is not None:
+            os.environ["OPSCRYER_GRAPH_FILE"] = saved_graph_file
 
 
 if __name__ == "__main__":

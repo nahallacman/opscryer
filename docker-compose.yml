@@ -24,6 +24,11 @@ services:
       context: .
       dockerfile: Dockerfile.opscryer
     container_name: opscryer-browser
+    # To mount an external Knowledge Graph outside the OpsCryer tool repository:
+    # environment:
+    #   - OPSCRYER_GRAPH_FILE=/data/knowledge-graph.json
+    # volumes:
+    #   - /path/to/external/knowledge-graph.json:/data/knowledge-graph.json:ro
     ports:
       - "8089:8088"
     networks:
