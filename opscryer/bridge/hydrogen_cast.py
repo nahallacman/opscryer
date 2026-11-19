@@ -248,7 +248,7 @@ def _stdlib_list_cast_models_fallback(bundle_dir: Optional[Path] = None) -> Dict
         "hydrogen": {
             "rank": 30,
             "provider": os.environ.get("MESHWORKS_HYDROGEN_PROVIDER") or "ollama",
-            "model_name": os.environ.get("MESHWORKS_HYDROGEN_MODEL") or "qwen2.5-coder:1.5b",
+            "model_name": os.environ.get("MESHWORKS_HYDROGEN_MODEL") or "nemotron-mini:4b",
             "base_url": os.environ.get("MESHWORKS_HYDROGEN_ENDPOINT") or "http://localhost:11434",
             "cost_per_1k_usd": 0.0,
             "max_prompt_tokens": 400,
@@ -333,7 +333,7 @@ def _stdlib_cast_fallback(
     effective_model = (
         "predumped-template-only"
         if effective_tier == "zero_token_cutoff"
-        else str(model_name or os.environ.get("MESHWORKS_HYDROGEN_MODEL") or "qwen2.5-coder:1.5b")
+        else str(model_name or os.environ.get("MESHWORKS_HYDROGEN_MODEL") or "nemotron-mini:4b")
     )
     failover_occurred = bool(force_cutoff or effective_tier != requested_tier)
     effective_budget = max(80, int(max_prompt_tokens if max_prompt_tokens is not None else (140 if effective_tier == "zero_token_cutoff" else 400)))

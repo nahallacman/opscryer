@@ -91,7 +91,7 @@ def _prepare_advisor_context(catalog):
 def answer_operational_question(question, catalog=None, tree=None,
                                 provider="deterministic",
                                 ollama_url="http://localhost:11434",
-                                model="qwen2.5-coder:7b", min_confidence=0.80,
+                                model="llama3.2:3b", min_confidence=0.80,
                                 _context=None):
     """Gate first, then combine snapshot health, BM25, graph paths and Jev.
 

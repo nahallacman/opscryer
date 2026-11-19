@@ -825,7 +825,7 @@ def convert_local_host_to_graph(spec: dict | None = None) -> dict:
     """Show local OpsCryer services and Ollama models on a single host."""
     spec = _input(spec, {"hostname": "developer.cluster.example.org", "cpu_cores": 8, "ram_gib": 32,
                          "gpu_model": "Laptop GPU (8 GiB)",
-                         "local_models": ["llama3.1:8b", "qwen2.5-coder:7b"],
+                         "local_models": ["llama3.1:8b", "nemotron-mini:4b"],
                          "services": {"opscryer": {"port": 8088}, "ollama": {"port": 11434}}})
     graph = _Graph("host-local", spec.get("hostname") or "Local host", "local_host")
     graph.nodes[0]["domain"] = "hardware_topology"

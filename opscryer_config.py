@@ -53,7 +53,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "itsm_provider_name": "Enterprise Service Desk",
     "ollama_url": "http://localhost:11434",
     "jev_provider": "ollama",
-    "jev_model": "qwen2.5-coder:7b",
+    "jev_model": "llama3.2:3b",
     "jev_min_confidence": 0.80,
     "codex_command": "codex",
     "openai_base_url": "",

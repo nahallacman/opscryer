@@ -43,9 +43,9 @@ def _offline(status="offline", reason=None):
     return {"schema_version": 1, "source": "offline_fixture", "status": status,
             "live_http": False, "available": False, "example": True,
             "reason": reason, "models": _models({"models": [
-                {"name": "qwen2.5-coder:7b", "size": 4_700_000_000},
+                {"name": "nemotron-mini:4b", "size": 2_700_000_000},
                 {"name": "llama3.1:8b", "size": 4_900_000_000},
-                {"name": "qwen2.5:14b", "size": 9_000_000_000}]})}
+                {"name": "phi4-mini:3.8b", "size": 2_500_000_000}]})}
 
 
 def probe_local_ollama_models(ollama_url="http://localhost:11434", timeout=3,

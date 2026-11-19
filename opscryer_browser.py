@@ -443,7 +443,7 @@ def build_standalone_demo_dataset() -> dict[str, Any]:
                 "compute_routing": {
                     "routing_mode": "LOCAL_HARDWARE_GPU",
                     "routing_badge": "LOCAL DEMO GPU (0 Cloud Tokens)",
-                    "active_model": "qwen2.5-coder:7b",
+                    "active_model": "nemotron-mini:4b",
                 },
                 "dispatched_prompt": "[DEMO CARD] Verify SpatialGraphContract v1 adapter decoupling.",
                 "behavioral_health": {"state": "NOMINAL", "sla_utilization_pct": 42.0},
@@ -1954,7 +1954,7 @@ def render_standalone_browser_html(default_api_base: str = "", dataset: dict[str
       <select id="jev-candidate-model-selector" aria-label="Jev Candidate Model">
         <option value="jev-system-one:8b-q4_K_M">jev-system-one:8b-q4_K_M</option>
         <option value="deepseek-r1:8b">deepseek-r1:8b</option>
-        <option value="qwen2.5-coder:7b">qwen2.5-coder:7b</option>
+        <option value="nemotron-mini:4b">nemotron-mini:4b</option>
         <option value="llama3.1:8b-instruct-q4_K_M">llama3.1:8b-instruct</option>
         <option value="gemma2:9b-instruct-q4_K_M">gemma2:9b-instruct</option>
         <option value="phi4-mini:3.8b">phi4-mini:3.8b</option>

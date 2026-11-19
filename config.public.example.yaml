@@ -9,10 +9,10 @@ read_only_public_mode: true
 itsm_provider_name: "Enterprise Service Desk"
 # Integration examples only: Piece A preserves these flat keys but does not
 # invoke SystemOneJevClient, Ollama, or Codex CLI. See README.md for response JSON.
-# Start Ollama separately and run: ollama pull qwen2.5-coder:7b
+# Start Ollama separately and run: ollama pull llama3.2:3b
 ollama_url: "http://localhost:11434"
 jev_provider: "ollama"
-jev_model: "qwen2.5-coder:7b"
+jev_model: "llama3.2:3b"
 # calibrated_probability <0.80: stop traversal and request human escalation.
 # Exactly 0.80 may follow evaluated_value's true/false branch, subject to policy.
 # Invalid JSON, missing fields, or provider failures also require escalation.

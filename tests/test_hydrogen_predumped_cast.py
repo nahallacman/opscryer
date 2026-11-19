@@ -223,7 +223,7 @@ class HydrogenPredumpedCastTests(unittest.TestCase):
                         os.environ,
                         {
                             "MESHWORKS_PREDUMP_DIR": str(bundle_dir),
-                            "MESHWORKS_HYDROGEN_MODEL": "qwen3-coder:2b",
+                            "MESHWORKS_HYDROGEN_MODEL": "llama3.2:3b",
                             "MESHWORKS_HYDROGEN_PROVIDER": "openai_compatible",
                         },
                     ):
@@ -239,7 +239,7 @@ class HydrogenPredumpedCastTests(unittest.TestCase):
                         self.assertEqual(swap_body["brain_checks_performed"], 0)
                         self.assertEqual(swap_body["model_tier"], "hydrogen")
                         self.assertEqual(swap_body["provider"], "openai_compatible")
-                        self.assertEqual(swap_body["model_name"], "qwen3-coder:2b")
+                        self.assertEqual(swap_body["model_name"], "llama3.2:3b")
 
                     # Simulate service cutoff & offline local backends -> automatic downgrade to zero_token_cutoff.
                     cutoff_req = request.Request(

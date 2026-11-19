@@ -120,7 +120,7 @@
         "compute_routing": {
           "routing_mode": "LOCAL_HARDWARE_GPU",
           "routing_badge": "LOCAL DEMO GPU (0 Cloud Tokens)",
-          "active_model": "qwen2.5-coder:7b"
+          "active_model": "nemotron-mini:4b"
         },
         "dispatched_prompt": "[DEMO CARD] Verify SpatialGraphContract v1 adapter decoupling.",
         "behavioral_health": {

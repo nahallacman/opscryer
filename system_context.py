@@ -46,7 +46,7 @@ VERIFIED_HOMELAB_GPU_INVENTORY: dict[str, Any] = {
             "architecture": "Ampere",
             "host_node": "nodegamma03 (10.20.3.13)",
             "role": "Primary 24/7 In-Cluster K8s Ollama GPU Worker (ollama-service.ai-infra.svc:11434) & Media/Game Host",
-            "preferred_local_models": ["phi3:latest", "qwen2.5-coder:7b", "llama3.1:8b"],
+            "preferred_local_models": ["phi3:latest", "nemotron-mini:4b", "llama3.1:8b"],
         },
         {
             "id": "hw-gpu-rtx-3070ti-01",
@@ -56,7 +56,7 @@ VERIFIED_HOMELAB_GPU_INVENTORY: dict[str, Any] = {
             "architecture": "Ampere",
             "host_node": "Developer Workstation / Local GPU Tier",
             "role": "Fast 7B/8B Local GPU Worker, Single-Token Jev Classifier & Security Triage",
-            "preferred_local_models": ["qwen2.5-coder:7b-instruct-q4_K_M", "llama3.1:8b-instruct-q4_K_M", "phi3:latest"],
+            "preferred_local_models": ["nemotron-mini:4b", "llama3.1:8b-instruct-q4_K_M", "phi3:latest"],
         },
         {
             "id": "hw-gpu-gtx-1080ti-01",
@@ -66,7 +66,7 @@ VERIFIED_HOMELAB_GPU_INVENTORY: dict[str, Any] = {
             "architecture": "Pascal",
             "host_node": "Local GPU Compute Tier (Slot #1)",
             "role": "11 GB VRAM Parallel Batch Inference, Embeddings & Multi-Model Evaluation Worker #1",
-            "preferred_local_models": ["llama3.1:8b", "qwen2.5-coder:7b", "nomic-embed-text"],
+            "preferred_local_models": ["llama3.1:8b", "nemotron-mini:4b", "nomic-embed-text"],
         },
         {
             "id": "hw-gpu-gtx-1080ti-02",
@@ -76,7 +76,7 @@ VERIFIED_HOMELAB_GPU_INVENTORY: dict[str, Any] = {
             "architecture": "Pascal",
             "host_node": "Local GPU Compute Tier (Slot #2)",
             "role": "11 GB VRAM Parallel Batch Inference, Code Audit & Multi-Model Evaluation Worker #2",
-            "preferred_local_models": ["qwen2.5-coder:7b", "deepseek-r1:8b", "nomic-embed-text"],
+            "preferred_local_models": ["nemotron-mini:4b", "deepseek-r1:8b", "nomic-embed-text"],
         },
     ],
     "hallucinated_gpu_denylist": [

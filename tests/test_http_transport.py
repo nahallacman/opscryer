@@ -52,7 +52,7 @@ class TestHTTPTransport(unittest.TestCase):
         """Verify successful HTTP POST using a urllib.request.Request object."""
         req = Request(
             "http://localhost:11434/api/chat",
-            data=b'{"model":"qwen2.5"}',
+            data=b'{"model":"llama3.2"}',
             headers={"Content-Type": "application/json"},
             method="POST",
         )

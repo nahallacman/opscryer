@@ -557,7 +557,7 @@ For a local Ollama example, install Ollama, run `ollama serve` if the service is
 not already running, and pull the example model:
 
 ```powershell
-ollama pull qwen2.5-coder:7b
+ollama pull llama3.2:3b
 ```
 
 From the scratch directory containing the two files above, use Ollama's
@@ -567,7 +567,7 @@ and decode the JSON inside `message.content`:
 ```powershell
 $schema = Get-Content ./predicate.schema.json -Raw | ConvertFrom-Json
 $body = @{
-    model = 'qwen2.5-coder:7b'
+    model = 'llama3.2:3b'
     messages = @(@{role = 'user'; content = (Get-Content ./predicate.txt -Raw)})
     format = $schema
     stream = $false

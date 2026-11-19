@@ -301,8 +301,8 @@ def _ollama_copilot(pack, expected, model, ollama_url):
 
 def run_dual_tier_model_comparison(
         question=DEFAULT_QUESTION, catalog=None, provider="deterministic",
-        ollama_url="http://127.0.0.1:11434", low_power_model="qwen2.5:0.5b",
-        high_power_model="qwen2.5-coder:7b", _shared=None) -> dict:
+        ollama_url="http://127.0.0.1:11434", low_power_model="llama3.2:1b",
+        high_power_model="llama3.2:3b", _shared=None) -> dict:
     """Compare tier-specific evidence with shared, immutable Jev guardrails.
 
     Deterministic runs are offline demonstrations, not measured model inference.
@@ -776,7 +776,7 @@ def build_predumped_hydrogen_cast_metadata() -> dict[str, object]:
         "skills_mode": "predumped_standalone",
         "runtime_brain_checks_required": 0,
         "model_tier": "hydrogen",
-        "recommended_model": "qwen2.5-coder:1.5b",
+        "recommended_model": "nemotron-mini:4b",
         "max_prompt_tokens_budget": 400,
         "configurable_model_replacement": True,
         "supported_providers": [

@@ -135,7 +135,7 @@ class SystemOneJevClient:
     """
 
     def __init__(self, provider="deterministic", ollama_url="http://localhost:11434",
-                 model="qwen2.5-coder:7b", min_confidence=0.80, timeout=30):
+                 model="llama3.2:3b", min_confidence=0.80, timeout=30):
         self.provider = provider
         self.ollama_url = ollama_url
         self.model = model
@@ -266,7 +266,7 @@ class SystemOneJevClient:
 
 def evaluate_ticket_with_jev_tree(ticket_title, tree=None, provider="deterministic",
                                   ollama_url="http://localhost:11434",
-                                  model="qwen2.5-coder:7b", min_confidence=0.80):
+                                  model="llama3.2:3b", min_confidence=0.80):
     """Traverse the demo or supplied SystemOneDecisionTree v1, preserving policy.
 
     Return the browser policy/traversal contract plus a route field. Escalation
@@ -344,7 +344,7 @@ def evaluate_ticket_with_jev_tree(ticket_title, tree=None, provider="determinist
 
 def explain_jev_decision_path(ticket_text, tree=None, provider="deterministic",
                               ollama_url="http://localhost:11434",
-                              model="qwen2.5-coder:7b", min_confidence=0.80):
+                              model="llama3.2:3b", min_confidence=0.80):
     """Explain the evaluated policy with sanitized, validated decision breadcrumbs.
 
     Breadcrumbs contain only completed predicate decisions, not the terminal

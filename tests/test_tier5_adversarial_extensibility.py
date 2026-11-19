@@ -399,7 +399,7 @@ class TestTier5EnvironmentAdaptersAdversarial(unittest.TestCase):
         spec_list_services = {
             "hostname": "test-host.cluster.example.org",
             "services": ["service_alpha", "service_beta", {"name": "service_gamma", "port": 9000}],
-            "local_models": [{"name": "qwen2.5:7b"}, "phi3:latest"],
+            "local_models": [{"name": "nemotron-mini:4b"}, "phi3:latest"],
         }
         graph = convert_local_host_to_graph(spec_list_services)
         self.assertEqual(validate_spatial_graph_contract(graph), [])
@@ -407,7 +407,7 @@ class TestTier5EnvironmentAdaptersAdversarial(unittest.TestCase):
         self.assertIn("service_alpha", labels)
         self.assertIn("service_beta", labels)
         self.assertIn("service_gamma", labels)
-        self.assertIn("qwen2.5:7b", labels)
+        self.assertIn("nemotron-mini:4b", labels)
         self.assertIn("phi3:latest", labels)
 
     def test_render_adapters_markdown_and_html_generation(self) -> None:

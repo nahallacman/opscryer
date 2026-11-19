@@ -45,7 +45,7 @@ class TestOpsCryerConfig(unittest.TestCase):
         self.assertEqual(cfg["itsm_provider_name"], "Enterprise Service Desk")
         self.assertEqual(cfg["ollama_url"], "http://localhost:11434")
         self.assertEqual(cfg["jev_provider"], "ollama")
-        self.assertEqual(cfg["jev_model"], "qwen2.5-coder:7b")
+        self.assertEqual(cfg["jev_model"], "llama3.2:3b")
         self.assertAlmostEqual(cfg["jev_min_confidence"], 0.80)
         self.assertEqual(cfg["log_level"], "INFO")
         self.assertEqual(cfg["prometheus_url"], "http://127.0.0.1:9090")

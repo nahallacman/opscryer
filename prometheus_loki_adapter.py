@@ -45,7 +45,7 @@ OFFLINE_OBSERVABILITY_FIXTURE: dict[str, Any] = {
     "loki_log_summaries": [
         {
             "stream": '{namespace="ai-infra", app="ollama"}',
-            "sample_line": "level=INFO msg=\"loaded local GPU worker model qwen2.5-coder:7b\" host=10.20.3.13",
+            "sample_line": "level=INFO msg=\"loaded local GPU worker model nemotron-mini:4b\" host=10.20.3.13",
             "error_count_5m": 0,
         },
         {

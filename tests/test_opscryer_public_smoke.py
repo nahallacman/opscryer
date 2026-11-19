@@ -245,7 +245,7 @@ class TestOpsCryerPublicSmoke(unittest.TestCase):
         self.assertEqual(settings['port'], 8088)
         self.assertEqual(settings['ollama_url'], 'http://localhost:11434')
         self.assertEqual(settings['jev_provider'], 'ollama')
-        self.assertEqual(settings['jev_model'], 'qwen2.5-coder:7b')
+        self.assertEqual(settings['jev_model'], 'llama3.2:3b')
         self.assertEqual(settings['codex_command'], 'codex')
         self.assertEqual(settings['openai_base_url'], '')
         # Document the flat parser's actual decimal behavior for future clients.

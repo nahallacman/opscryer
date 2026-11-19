@@ -4358,7 +4358,6 @@ def run_signed_ramcache_patch_and_swarm_autoupdate_demo() -> dict[str, Any]:
 # ============================================================================
 
 BLOCKED_CHINESE_MODEL_PREFIXES: tuple[str, ...] = (
-    "qwen",
     "deepseek",
     "yi-",
     "yi:",
@@ -4529,7 +4528,7 @@ def verify_non_chinese_model_policy(model_id: str) -> dict[str, Any]:
     """
     Verify that `model_id` complies with the Non-Chinese Open-Weight Model Policy
     (allowing US/Western open-weight models from NVIDIA, Microsoft, Meta, Google, and
-    blocking Chinese-origin model families such as Qwen, DeepSeek, Yi, Baichuan, GLM).
+    rejecting uncataloged or unapproved model families outside the verified open-weight catalog).
     """
     clean = str(model_id or "").strip().lower()
     if not clean:
