@@ -12,6 +12,7 @@ _PKG_DIR = Path(__file__).resolve().parent.parent
 if str(_PKG_DIR) not in sys.path:
     sys.path.insert(0, str(_PKG_DIR))
 
+import pqc_security
 from pqc_security import (
     gf256_div,
     gf256_mul,
@@ -307,6 +308,65 @@ class TestVerifyMultiKeyLocks(unittest.TestCase):
             {"signature": sig1, "public_key": pub1},
         ]
         self.assertFalse(verify_multi_key_locks(payload, approvals_1, spec))
+
+    def test_p0_hardening_rejects_token_bypass_k1_forgery_and_low_order_x25519(self):
+        # 1. Native convenience aliases exist on pqc_security without importing flight_recorder/itsm
+        pub, priv = generate_pqc_keypair(tree_height=2)
+        sig_msg = pqc_security.sign_pqc_message({"event": "audit"}, priv)
+        self.assertTrue(pqc_security.verify_pqc_signature({"event": "audit"}, sig_msg, pub))
+
+        # 2. Branch 3 token-only dicts and mixed failed Branch 2 + token dicts must be rejected
+        self.assertFalse(
+            verify_multi_key_locks(
+                b"ActionPayload",
+                [
+                    {"key_id": "attacker-1", "token": "non-empty"},
+                    {"key_id": "attacker-2", "token": "non-empty"},
+                ],
+                {"required_k": 2},
+            )
+        )
+        _, rogue_priv = generate_pqc_keypair(tree_height=2)
+        bad_sig = pqc_sign(b"WrongPayload", rogue_priv)
+        self.assertFalse(
+            verify_multi_key_locks(
+                b"ActionPayload",
+                [
+                    {"signature": bad_sig, "public_key": pub, "key_id": "bypass-1", "token": "ok"},
+                    {"key_id": "bypass-2", "secret": "ok"},
+                ],
+                {"required_k": 2, "authorized_keys": [pub["root"], "bypass-2"]},
+            )
+        )
+
+        # 3. Forged k=1 share cannot unlock required_k=2 threshold lock
+        k1_shares = split_secret_shares(b"SingleShareBypassAttempt", k=1, n=1)
+        self.assertFalse(
+            verify_multi_key_locks(
+                b"ActionPayload",
+                [k1_shares[0], {**k1_shares[0], "x": 2}],
+                {"required_k": 2},
+            )
+        )
+
+        # 4. Low-order all-zero X25519 point rejected cleanly
+        zero_pub = {**pub, "enc_key": "00" * 32}
+        with self.assertRaises(ValueError):
+            pqc_seal(b"secret", zero_pub)
+        env = pqc_seal(b"secret", pub)
+        self.assertFalse(env["header"]["kem_quantum_resistant"])
+        tampered_zero_eph = json.loads(json.dumps(env))
+        tampered_zero_eph["header"]["ephemeral_pubkey"] = "00" * 32
+        with self.assertRaises(ValueError):
+            pqc_unseal(tampered_zero_eph, priv)
+
+        # 5. pqc_verify rejects mismatched auth_path length and out-of-range key_index
+        bad_len_sig = json.loads(json.dumps(sig_msg))
+        bad_len_sig["auth_path"] = bad_len_sig["auth_path"][:-1]
+        self.assertFalse(pqc_verify(pqc_security._ensure_message_bytes({"event": "audit"}), bad_len_sig, pub))
+        bad_idx_sig = json.loads(json.dumps(sig_msg))
+        bad_idx_sig["key_index"] = 99
+        self.assertFalse(pqc_verify(pqc_security._ensure_message_bytes({"event": "audit"}), bad_idx_sig, pub))
 
 
 if __name__ == "__main__":

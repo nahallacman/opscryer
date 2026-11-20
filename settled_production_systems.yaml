@@ -15,7 +15,7 @@ systems:
     human_monitoring_links:
       grafana_dashboard_url: "https://grafana.cluster.example.org/d/k8s-system-harbor?var-namespace=harbor&var-service=harbor&from=now-1h&to=now"
       gitlab_source_and_pipelines_url: "https://gitlab.cluster.example.org/platform/infra-gitops/-/tree/main/gitops/apps/harbor.yaml?system=harbor"
-      herdr_agent_pane_link: "herdr://attach/subagent-flash38-kg-01?system=harbor&cmd=hc+attach+subagent-flash38-kg-01"
+      herdr_agent_pane_link: "herdr://attach/agent-kg-01?system=harbor&cmd=hc+attach+agent-kg-01"
       dependency_analyzer_url: "https://dependencies.cluster.example.org/?focusNode=sys-harbor&system=harbor&view=blast-radius"
       argocd_application_url: "https://argocd.cluster.example.org/applications/argocd/harbor?view=tree&system=harbor"
       security_dashboard_url: "https://opscryer.cluster.example.org/secops?system=harbor&namespace=harbor&scanner=trivy-harbor"
@@ -50,7 +50,7 @@ systems:
     human_monitoring_links:
       grafana_dashboard_url: "https://grafana.cluster.example.org/d/k8s-system-openbao?var-namespace=iam&var-service=openbao&from=now-1h&to=now"
       gitlab_source_and_pipelines_url: "https://gitlab.cluster.example.org/platform/infra-gitops/-/tree/main/infrastructure/openbao?system=openbao"
-      herdr_agent_pane_link: "herdr://attach/subagent-flash38-kg-01?system=openbao&cmd=hc+attach+subagent-flash38-kg-01"
+      herdr_agent_pane_link: "herdr://attach/agent-kg-01?system=openbao&cmd=hc+attach+agent-kg-01"
       dependency_analyzer_url: "https://dependencies.cluster.example.org/?focusNode=sys-openbao&system=openbao&view=blast-radius"
       argocd_application_url: "https://argocd.cluster.example.org/applications/argocd/openbao?view=tree&system=openbao"
       security_dashboard_url: "https://opscryer.cluster.example.org/secops?system=openbao&namespace=iam&scanner=openbao-kms-audit"
@@ -60,9 +60,9 @@ systems:
       - playbook_id: "openbao-sealed-or-externalsecret-sync-error"
         title: "OpenBao Replica Sealed or ExternalSecret Sync Failure"
         symptom_keywords: ["sealed", "externalsecret", "secret sync", "vault unseal", "external-secrets"]
-        solution_summary: "An OpenBao replica is sealed after pod restart or the ExternalSecret key path under kv/data/homelab/ is out of sync."
-        remediation_steps: ["Inspect OpenBao pod readiness in namespace iam and check /v1/sys/health.", "Unseal sealed OpenBao replicas using scripts/vault/unseal-openbao.ps1 and verify external-secrets pods in kube-system."]
-        explicit_commands: ["kubectl get pods -n iam -l app.kubernetes.io/name=openbao", "kubectl get externalsecrets.external-secrets.io -A", "pwsh -File scripts/vault/unseal-openbao.ps1"]
+        solution_summary: "An OpenBao replica is sealed after pod restart or the ExternalSecret key path under kv/data/platform/ is out of sync."
+        remediation_steps: ["Inspect OpenBao pod readiness in namespace iam and check /v1/sys/health.", "Unseal sealed OpenBao replicas using scripts/vault/unseal-kms.sh and verify external-secrets pods in kube-system."]
+        explicit_commands: ["kubectl get pods -n iam -l app.kubernetes.io/name=openbao", "kubectl get externalsecrets.external-secrets.io -A", "sh scripts/vault/unseal-kms.sh"]
         required_it_tickets: ["IT-SEC-OPENBAO-01"]
   - system_id: "argocd"
     label: "ArgoCD GitOps Controller & Application Set Engine"
@@ -78,7 +78,7 @@ systems:
     human_monitoring_links:
       grafana_dashboard_url: "https://grafana.cluster.example.org/d/k8s-system-argocd?var-namespace=argocd&var-service=argocd&from=now-1h&to=now"
       gitlab_source_and_pipelines_url: "https://gitlab.cluster.example.org/platform/infra-gitops/-/tree/main/infrastructure/argocd?system=argocd"
-      herdr_agent_pane_link: "herdr://attach/subagent-flash38-kg-01?system=argocd&cmd=hc+attach+subagent-flash38-kg-01"
+      herdr_agent_pane_link: "herdr://attach/agent-kg-01?system=argocd&cmd=hc+attach+agent-kg-01"
       dependency_analyzer_url: "https://dependencies.cluster.example.org/?focusNode=sys-argocd&system=argocd&view=blast-radius"
       argocd_application_url: "https://argocd.cluster.example.org/applications/argocd/argocd?view=tree&system=argocd"
       security_dashboard_url: "https://opscryer.cluster.example.org/secops?system=argocd&namespace=argocd&scanner=gitops-drift"
@@ -90,7 +90,7 @@ systems:
         symptom_keywords: ["argocd-redis-secret-init", "presync hook", "chart.lock", "comparisonerror", "outofsync"]
         solution_summary: "ArgoCD upgrade is waiting on a pre-existing argocd-redis-secret-init PreSync Job or Chart.lock dependency drift."
         remediation_steps: ["Ensure redisSecretInit.podAnnotations includes sidecar.istio.io/inject: false in infrastructure/argocd/values.yaml.", "Delete the completed/stale argocd-redis-secret-init PreSync Job in namespace argocd and sync Chart.lock."]
-        explicit_commands: ["kubectl get applications.argoproj.io -n argocd", "kubectl delete job argocd-redis-secret-init -n argocd --ignore-not-found", "python scripts/devops/swarm_dispatch.py upgrade-preflight"]
+        explicit_commands: ["kubectl get applications.argoproj.io -n argocd", "kubectl delete job argocd-redis-secret-init -n argocd --ignore-not-found", "opscryer-hub --json"]
         required_it_tickets: ["IT-GITOPS-ARGOCD-01"]
   - system_id: "gitlab"
     label: "GitLab CE Source Control, Merge Requests & CI Runners"
@@ -106,7 +106,7 @@ systems:
     human_monitoring_links:
       grafana_dashboard_url: "https://grafana.cluster.example.org/d/k8s-system-gitlab?var-namespace=gitlab&var-service=gitlab&from=now-1h&to=now"
       gitlab_source_and_pipelines_url: "https://gitlab.cluster.example.org/platform/infra-gitops/-/tree/main/gitlab?system=gitlab"
-      herdr_agent_pane_link: "herdr://attach/subagent-flash38-kg-01?system=gitlab&cmd=hc+attach+subagent-flash38-kg-01"
+      herdr_agent_pane_link: "herdr://attach/agent-kg-01?system=gitlab&cmd=hc+attach+agent-kg-01"
       dependency_analyzer_url: "https://dependencies.cluster.example.org/?focusNode=sys-gitlab&system=gitlab&view=blast-radius"
       argocd_application_url: "https://argocd.cluster.example.org/applications/argocd/gitlab?view=tree&system=gitlab"
       security_dashboard_url: "https://opscryer.cluster.example.org/secops?system=gitlab&namespace=gitlab&scanner=sast-secret-detection"
@@ -117,8 +117,8 @@ systems:
         title: "GitLab Merge Request Blocked by Conflict, Rebase, or Failed CI Job"
         symptom_keywords: ["merge conflict", "mr blocked", "pipeline failed", "commitlint", "cannot_be_merged", "gitlab runner"]
         solution_summary: "Open Merge Request is blocked by one of the 7 merge-blocking gates (conflict, rebase, or CI job failure)."
-        remediation_steps: ["Run gitlab_ops.py mr blockers to inspect exact failed jobs and conflict status.", "Verify lowercase Conventional Commits and LF line endings before pushing."]
-        explicit_commands: ["python scripts/devops/gitlab_ops.py mr list", "python scripts/devops/check_line_endings.py"]
+        remediation_steps: ["Run gitops-cli mr blockers to inspect exact failed jobs and conflict status.", "Verify lowercase Conventional Commits and LF line endings before pushing."]
+        explicit_commands: ["gitops-cli mr list", "python scripts/ci_verify.py"]
         required_it_tickets: ["IT-CICD-GITLAB-01"]
       - playbook_id: "gitlab-recreate-rollout-503-or-puma-memory"
         title: "GitLab StrategyType Recreate Rollout 503 Window or Puma Worker Saturation"
@@ -141,7 +141,7 @@ systems:
     human_monitoring_links:
       grafana_dashboard_url: "https://grafana.cluster.example.org/d/k8s-system-authentik?var-namespace=iam&var-service=authentik&from=now-1h&to=now"
       gitlab_source_and_pipelines_url: "https://gitlab.cluster.example.org/platform/infra-gitops/-/tree/main/infrastructure/authentik?system=authentik"
-      herdr_agent_pane_link: "herdr://attach/subagent-flash38-kg-01?system=authentik&cmd=hc+attach+subagent-flash38-kg-01"
+      herdr_agent_pane_link: "herdr://attach/agent-kg-01?system=authentik&cmd=hc+attach+agent-kg-01"
       dependency_analyzer_url: "https://dependencies.cluster.example.org/?focusNode=sys-authentik&system=authentik&view=blast-radius"
       argocd_application_url: "https://argocd.cluster.example.org/applications/argocd/authentik?view=tree&system=authentik"
       security_dashboard_url: "https://opscryer.cluster.example.org/secops?system=authentik&namespace=iam&scanner=oidc-sso-audit"
@@ -169,7 +169,7 @@ systems:
     human_monitoring_links:
       grafana_dashboard_url: "https://grafana.cluster.example.org/d/k8s-system-openzfs_nas?var-namespace=storage-system&var-service=openzfs_nas&from=now-1h&to=now"
       gitlab_source_and_pipelines_url: "https://gitlab.cluster.example.org/platform/infra-gitops/-/tree/main/helm-migrations/zfs-nfs-driver.yaml?system=openzfs_nas"
-      herdr_agent_pane_link: "herdr://attach/subagent-flash38-kg-01?system=openzfs_nas&cmd=hc+attach+subagent-flash38-kg-01"
+      herdr_agent_pane_link: "herdr://attach/agent-kg-01?system=openzfs_nas&cmd=hc+attach+agent-kg-01"
       dependency_analyzer_url: "https://dependencies.cluster.example.org/?focusNode=sys-openzfs_nas&system=openzfs_nas&view=blast-radius"
       argocd_application_url: "https://argocd.cluster.example.org/applications/argocd/migrated-zfs-nfs-driver?view=tree&system=openzfs_nas"
       security_dashboard_url: "https://opscryer.cluster.example.org/secops?system=openzfs_nas&namespace=storage-system&scanner=zfs-storage-audit"
@@ -197,7 +197,7 @@ systems:
     human_monitoring_links:
       grafana_dashboard_url: "https://grafana.cluster.example.org/d/k8s-system-opscryer_hud?var-namespace=dev-envs&var-service=opscryer_hud&from=now-1h&to=now"
       gitlab_source_and_pipelines_url: "https://gitlab.cluster.example.org/platform/infra-gitops/-/tree/main/infrastructure/devcontainers/templates/swarm-memory.yaml?system=opscryer_hud"
-      herdr_agent_pane_link: "herdr://attach/subagent-flash38-kg-01?system=opscryer_hud&cmd=hc+attach+subagent-flash38-kg-01"
+      herdr_agent_pane_link: "herdr://attach/agent-kg-01?system=opscryer_hud&cmd=hc+attach+agent-kg-01"
       dependency_analyzer_url: "https://dependencies.cluster.example.org/?focusNode=sys-opscryer_hud&system=opscryer_hud&view=blast-radius"
       argocd_application_url: "https://argocd.cluster.example.org/applications/argocd/devcontainers?view=tree&system=opscryer_hud"
       security_dashboard_url: "https://opscryer.cluster.example.org/secops?system=opscryer_hud&namespace=dev-envs&scanner=ocsf-secops"
@@ -225,7 +225,7 @@ systems:
     human_monitoring_links:
       grafana_dashboard_url: "https://grafana.cluster.example.org/d/k8s-system-hopper_orchestrator?var-namespace=ai-sandbox&var-service=hopper_orchestrator&from=now-1h&to=now"
       gitlab_source_and_pipelines_url: "https://gitlab.cluster.example.org/platform/infra-gitops/-/tree/main/infrastructure/ai-sandbox?system=hopper_orchestrator"
-      herdr_agent_pane_link: "herdr://attach/subagent-flash38-kg-01?system=hopper_orchestrator&cmd=hc+attach+subagent-flash38-kg-01"
+      herdr_agent_pane_link: "herdr://attach/agent-kg-01?system=hopper_orchestrator&cmd=hc+attach+agent-kg-01"
       dependency_analyzer_url: "https://dependencies.cluster.example.org/?focusNode=sys-hopper_orchestrator&system=hopper_orchestrator&view=blast-radius"
       argocd_application_url: "https://argocd.cluster.example.org/applications/argocd/ai-sandbox?view=tree&system=hopper_orchestrator"
       security_dashboard_url: "https://opscryer.cluster.example.org/secops?system=hopper_orchestrator&namespace=ai-sandbox&scanner=agent-sandbox-audit"

@@ -8,6 +8,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import argparse
 import json
 import re
+import threading
 import time
 from urllib.parse import parse_qs, urlsplit
 
@@ -18,11 +19,13 @@ from telemetry_sanitizer import sanitize_live_home_telemetry_for_demo as sanitiz
 
 
 _METRICS_CACHE = {}
+_METRICS_CACHE_LOCK = threading.Lock()
 
 
 def clear_live_metrics_cache() -> None:
     """Discard cached responses without collecting telemetry."""
-    _METRICS_CACHE.clear()
+    with _METRICS_CACHE_LOCK:
+        _METRICS_CACHE.clear()
 
 
 def poll_live_cluster_metrics(allow_kubectl: bool = False, ttl_seconds: int = 10,
@@ -32,7 +35,8 @@ def poll_live_cluster_metrics(allow_kubectl: bool = False, ttl_seconds: int = 10
             or not 0 <= ttl_seconds <= 3600):
         raise ValueError("Invalid live metrics parameters")
     key = (allow_kubectl, ttl_seconds)
-    cached = _METRICS_CACHE.get(key) if catalog is None else None
+    with _METRICS_CACHE_LOCK:
+        cached = _METRICS_CACHE.get(key) if catalog is None else None
     if cached and time.monotonic() - cached[0] < ttl_seconds:
         return deepcopy(cached[1])
     mode = "SNAPSHOT_CACHE"
@@ -95,7 +99,8 @@ def poll_live_cluster_metrics(allow_kubectl: bool = False, ttl_seconds: int = 10
         "namespace_pressure": pressure[:8],
     })
     if catalog is None:
-        _METRICS_CACHE[key] = (time.monotonic(), deepcopy(result))
+        with _METRICS_CACHE_LOCK:
+            _METRICS_CACHE[key] = (time.monotonic(), deepcopy(result))
     return result
 
 

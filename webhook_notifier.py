@@ -14,6 +14,7 @@ Features:
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import ipaddress
 import json
 import logging
 import os
@@ -21,6 +22,7 @@ import re
 import time
 from typing import Any, Callable
 import urllib.error
+from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 import uuid
 
@@ -34,6 +36,7 @@ DEFAULT_MAX_RETRIES: int = 2
 CIRCUIT_BREAKER_NAME: str = "webhook_notifier"
 DEFAULT_USER_AGENT: str = "OpsCryer-WebhookNotifier/1.0"
 VALID_SEVERITIES: frozenset[str] = frozenset({"critical", "high", "warning", "info", "low"})
+_BLOCKED_WEBHOOK_HOSTS: frozenset[str] = frozenset({"metadata.google.internal", "metadata", "instance-data"})
 
 logger = logging.getLogger("opscryer.webhook_notifier")
 
@@ -96,6 +99,45 @@ def resolve_webhook_url(explicit_url: str | None = None) -> str | None:
 
     # Tier 4: Default None (disabled sink / safe no-op)
     return None
+
+
+def _redact_webhook_url_for_log(url: str) -> str:
+    """Mask path/query webhook secret tokens while keeping scheme and host for diagnostics."""
+    try:
+        parsed = urlparse(str(url or "").strip())
+        host = (parsed.hostname or "").strip()
+        if not parsed.scheme or not host:
+            return "<invalid-url>"
+        port_part = f":{parsed.port}" if parsed.port else ""
+        return f"{parsed.scheme.lower()}://{host}{port_part}/<redacted>"
+    except Exception:
+        return "<invalid-url>"
+
+
+def _validate_webhook_url(url: str) -> str:
+    """Validate webhook destination scheme and host, blocking SSRF/IMDS/credential smuggling."""
+    cleaned = str(url or "").strip()
+    # Allow only http/https URLs with no whitespace or ASCII control characters.
+    if (
+        not cleaned
+        or not cleaned.startswith(("http://", "https://"))
+        or any(ch.isspace() or ord(ch) < 32 or ord(ch) == 127 for ch in cleaned)
+    ):
+        raise ValueError("Webhook URL must use http:// or https:// without control characters")
+    parsed = urlparse(cleaned)
+    if parsed.username or parsed.password:
+        raise ValueError("Embedded credentials are forbidden in webhook URLs")
+    host = (parsed.hostname or "").strip().lower().strip("[]")
+    if not host or host in _BLOCKED_WEBHOOK_HOSTS or host in {"0.0.0.0", "::"}:
+        raise ValueError("Blocked or missing webhook destination hostname")
+    try:
+        addr = ipaddress.ip_address(host)
+    except ValueError:
+        addr = None
+    # Block link-local IMDS (169.254/16, fe80::/10), multicast, and unspecified IP literals.
+    if addr is not None and (addr.is_link_local or addr.is_multicast or addr.is_unspecified):
+        raise ValueError("Webhook destination IP is in a forbidden range")
+    return cleaned
 
 
 def get_default_cluster_metadata() -> dict[str, Any]:
@@ -176,6 +218,16 @@ def dispatch_webhook_event(
     if not url:
         logger.debug("Webhook notification suppressed: no webhook_url configured.")
         return False
+    try:
+        url = _validate_webhook_url(url)
+    except ValueError as err:
+        logger.warning(
+            "Blocked invalid or unsafe webhook URL (%s): %s",
+            _redact_webhook_url_for_log(url),
+            err,
+        )
+        return False
+    safe_url_log = _redact_webhook_url_for_log(url)
 
     try:
         payload = build_webhook_payload(
@@ -214,7 +266,7 @@ def dispatch_webhook_event(
             "Successfully dispatched webhook event '%s' (id=%s) to %s",
             event_type,
             payload.get("event_id"),
-            url,
+            safe_url_log,
         )
         return True
     except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, OSError) as err:
@@ -222,7 +274,7 @@ def dispatch_webhook_event(
             "Failed to dispatch webhook event '%s' (id=%s) to %s: %s",
             event_type,
             payload.get("event_id"),
-            url,
+            safe_url_log,
             err,
         )
         return False

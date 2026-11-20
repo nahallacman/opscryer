@@ -13,17 +13,34 @@ import { useApi, configApiRef } from '@backstage/core-plugin-api';
 
 const DEFAULT_OPSCRYER_URL = 'http://localhost:8088';
 
+export function resolveSafeOpscryerUrl(rawUrl: string | undefined): string {
+  const candidate = (rawUrl ?? '').trim();
+  if (!candidate) {
+    return DEFAULT_OPSCRYER_URL;
+  }
+  try {
+    const parsed = new URL(candidate);
+    if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+      return parsed.toString();
+    }
+  } catch {
+    return DEFAULT_OPSCRYER_URL;
+  }
+  return DEFAULT_OPSCRYER_URL;
+}
+
 export const OpsCryerBrowserComponent = () => {
   const configApi = useApi(configApiRef);
   const opscryerConfigs =
     configApi.getOptionalConfigArray('integrations.opscryer') ?? [];
-  const opscryerUrl =
-    opscryerConfigs[0]?.getOptionalString('baseUrl') ?? DEFAULT_OPSCRYER_URL;
+  const opscryerUrl = resolveSafeOpscryerUrl(
+    opscryerConfigs[0]?.getOptionalString('baseUrl'),
+  );
 
   return (
-    <Box sx={{ flexGrow: 1, p: 3, width: '100%' }}>
+    <Box flexGrow={1} p={3} width="100%">
       <ContentHeader title="OpsCryer Spatial Browser" />
-      <Box sx={{ mt: 2 }}>
+      <Box mt={2}>
         <InfoCard title="OpsCryer">
           <CardContent>
             <Typography variant="body1">
@@ -34,7 +51,7 @@ export const OpsCryerBrowserComponent = () => {
           </CardContent>
         </InfoCard>
       </Box>
-      <Box sx={{ mt: 2 }}>
+      <Box mt={2}>
         <Card>
           <CardHeader
             title="Spatial Browser"
@@ -67,10 +84,10 @@ export const OpsCryerBrowserComponent = () => {
           </CardContent>
         </Card>
       </Box>
-      <Box sx={{ mt: 2 }}>
+      <Box mt={2}>
         <Chip label="Read-only integration" color="default" size="small" variant="outlined" />
       </Box>
-      <Box sx={{ mt: 2 }}>
+      <Box mt={2}>
         <Typography variant="caption" color="textSecondary">
           OpsCryer is an independent service. This Backstage plugin renders it
           in an iframe with a launch button for full-screen access.

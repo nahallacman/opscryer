@@ -447,6 +447,57 @@ class TestWebhookNotifierUnit(unittest.TestCase):
         self.assertEqual(res_details["server_cert"], "[REDACTED]")
         self.assertEqual(res_details["benign_metric"], 42)
 
+    def test_p1_ssrf_blocks_unsafe_webhook_urls_and_redacts_secret_paths_in_logs(self) -> None:
+        """Verify unsafe webhook URLs are blocked before transport and secret URL paths stay out of logs."""
+        mock_opener = MagicMock()
+        for bad_url in (
+            "file:///etc/passwd",
+            "http://169.254.169.254/latest/meta-data/",
+            "http://metadata.google.internal/v1",
+            "http://user:pass@hooks.example.org/hook",
+        ):
+            with self.subTest(bad_url=bad_url):
+                ok = dispatch_webhook_event(
+                    event_type="ssrf_probe",
+                    severity="warning",
+                    summary="Blocked probe",
+                    webhook_url=bad_url,
+                    opener=mock_opener,
+                )
+                self.assertFalse(ok)
+        self.assertEqual(mock_opener.call_count, 0)
+
+        secret_url = "https://hooks.slack.com/services/T00/B00/SECRETTOKEN?sig=topsecret"
+        mock_opener.return_value = io.BytesIO(b'{"ok":true}')
+        with self.assertLogs("opscryer", level="INFO") as ok_logs:
+            ok = dispatch_webhook_event(
+                event_type="slack_ping",
+                severity="info",
+                summary="Safe log check",
+                webhook_url=secret_url,
+                opener=mock_opener,
+            )
+            self.assertTrue(ok)
+        joined_ok = "\n".join(ok_logs.output)
+        self.assertIn("https://hooks.slack.com/<redacted>", joined_ok)
+        self.assertNotIn("SECRETTOKEN", joined_ok)
+        self.assertNotIn("topsecret", joined_ok)
+
+        mock_opener.side_effect = urllib.error.HTTPError(secret_url, 500, "Server Error", {}, None)
+        with self.assertLogs("opscryer", level="WARNING") as err_logs:
+            ok_fail = dispatch_webhook_event(
+                event_type="slack_fail",
+                severity="warning",
+                summary="Failure log check",
+                webhook_url=secret_url,
+                max_retries=0,
+                opener=mock_opener,
+            )
+            self.assertFalse(ok_fail)
+        joined_err = "\n".join(err_logs.output)
+        self.assertIn("https://hooks.slack.com/<redacted>", joined_err)
+        self.assertNotIn("SECRETTOKEN", joined_err)
+
 
 if __name__ == "__main__":
     unittest.main()

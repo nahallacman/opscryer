@@ -8,6 +8,44 @@ and require ``q`` for chat-concierge and live-cluster-ask.
 """
 
 
+_LIVE_IO_MODULES = frozenset({
+    "opscryer_browser",
+    "live_metrics_poller",
+    "prometheus_loki_adapter",
+    "model_tier_copilot",
+    "event_stream",
+    "cluster_diff_engine",
+    "live_advisor",
+    "live_currencies",
+})
+_SIMULATED_MODULES = frozenset({
+    "gameday_simulator",
+    "scale_benchmark",
+    "chat_walkthrough",
+    "playbook_studio",
+    "game_observability_loop",
+    "jev_calibration_eval",
+    "chaos_blast_radius",
+    "action_cards",
+    "cybersecurity_bridge",
+    "node_federation",
+    "mcp_bridge",
+    "gitops_promotion_bridge",
+    "tactical_security_deck",
+    "itsm_chatops_bridge",
+    "flight_recorder",
+})
+
+
+def classify_execution_mode(module: str) -> str:
+    """Classify a route module's runtime mode as live_io, simulated, or snapshot_derived."""
+    if module in _LIVE_IO_MODULES:
+        return "live_io"
+    if module in _SIMULATED_MODULES:
+        return "simulated"
+    return "snapshot_derived"
+
+
 HTML_PORTAL_ROUTES = (
     {"path": "/scale", "title": "Graph Scalability & Performance Benchmark", "subsystem": "portals", "module": "scale_benchmark"},
     {"path": "/", "title": "Spatial Graph Browser", "subsystem": "portals", "module": "opscryer_browser"},
@@ -226,6 +264,10 @@ API_V1_ROUTES = {
 }
 
 
+for _route in (*HTML_PORTAL_ROUTES, *API_V1_ROUTES.values()):
+    _route["execution_mode"] = classify_execution_mode(_route["module"])
+
+
 def get_allowed_api_params() -> dict[str, set[str]]:
     """Return a mapping of route path to set of allowed query parameters."""
     return {path: set(info.get("allowed_params", set())) for path, info in API_V1_ROUTES.items()}
@@ -239,12 +281,17 @@ def build_route_registry_summary() -> dict:
     """
     grouped = {name: {"html_routes": 0, "api_routes": 0}
                for name in ("core", "live", "security", "portals")}
+    by_mode = {mode: {"html_routes": 0, "api_routes": 0}
+               for mode in ("live_io", "snapshot_derived", "simulated")}
     for route in HTML_PORTAL_ROUTES:
         grouped[route["subsystem"]]["html_routes"] += 1
+        by_mode[route["execution_mode"]]["html_routes"] += 1
     for route in API_V1_ROUTES.values():
         grouped[route["subsystem"]]["api_routes"] += 1
+        by_mode[route["execution_mode"]]["api_routes"] += 1
     return {
         "total_html_routes": len(HTML_PORTAL_ROUTES),
         "total_api_routes": len(API_V1_ROUTES),
         "by_subsystem": grouped,
+        "by_execution_mode": by_mode,
     }

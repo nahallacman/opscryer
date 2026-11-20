@@ -15,6 +15,7 @@ if str(_PKG_DIR) not in sys.path:
 
 from action_cards import (
     canonical_parameter_hash,
+    compute_card_payload_bytes,
     preview_action_dry_run,
     evaluate_outcome_worrisomeness,
     ActionCardLedger,
@@ -334,25 +335,31 @@ class TestActionCardLedger(unittest.TestCase):
 
     def test_threshold_share_aggregation_and_deduplication(self):
         # Stage a critical card on nodebeta02 (control plane triggers Signal 1 -> 2-of-3 threshold)
-        card = self.ledger.stage_card("nodebeta02", "restart_node")
+        pub1, priv1 = generate_pqc_keypair(tree_height=2)
+        pub2, priv2 = generate_pqc_keypair(tree_height=2)
+        card = self.ledger.stage_card(
+            "nodebeta02",
+            "restart_node",
+            authorized_keys=[pub1["root"], pub2["root"]],
+        )
         aid = card["action_id"]
         self.assertEqual(card["worrisomeness"]["mode"], "threshold")
         self.assertEqual(card["worrisomeness"]["required_k"], 2)
 
-        # Keyholder 1 submits share
-        c1 = {"key_id": "auditor-alpha", "data": "share1"}
+        payload = compute_card_payload_bytes(card)
+        c1 = {"signature": pqc_sign(payload, priv1), "public_key": pub1}
         code1, resp1 = self.ledger.approve_card(aid, parameters_sha256=card["parameters_sha256"], credential=c1)
         self.assertEqual(code1, 200)
         self.assertEqual(resp1["status"], "STAGED")
         self.assertEqual(resp1["shares_collected"], 1)
 
-        # Keyholder 1 submits duplicate share -> deduplicated
+        # Signer 1 resubmitting is deduplicated by key_id
         code1_dup, resp1_dup = self.ledger.approve_card(aid, parameters_sha256=card["parameters_sha256"], credential=c1)
         self.assertEqual(code1_dup, 200)
         self.assertEqual(resp1_dup["shares_collected"], 1)
 
-        # Keyholder 2 submits distinct share -> reaches threshold k=2
-        c2 = {"key_id": "auditor-beta", "data": "share2"}
+        # Signer 2 submits distinct PQC signature -> reaches threshold k=2
+        c2 = {"signature": pqc_sign(payload, priv2), "public_key": pub2}
         code2, resp2 = self.ledger.approve_card(aid, parameters_sha256=card["parameters_sha256"], credential=c2)
         self.assertEqual(code2, 200)
         self.assertEqual(resp2["status"], "EXECUTED")
@@ -555,6 +562,53 @@ class TestThresholdValidationAndStatusFiltering(unittest.TestCase):
         code, resp = self.ledger.approve_card(aid, credential=cred_rogue)
         self.assertEqual(code, 403)
         self.assertEqual(resp["code"], "UNAUTHORIZED_KEY")
+
+    def test_approve_threshold_rejects_unauthenticated_keyholder_tokens_and_k1_forged_shares(self):
+        card = self.ledger.stage_card("nodebeta02", "restart_node")
+        aid = card["action_id"]
+
+        for forged in (
+            {"key_id": "auditor-alpha", "token": "forged-token"},
+            {"key_id": "auditor-alpha", "data": "share1"},
+        ):
+            code, resp = self.ledger.approve_card(aid, parameters_sha256=card["parameters_sha256"], credential=forged)
+            self.assertEqual(code, 400)
+            self.assertEqual(resp["code"], "INVALID_CREDENTIALS")
+
+        k1_forged = split_secret_shares(b"ForgedSingleShare", k=1, n=1)[0]
+        code_k1, resp_k1 = self.ledger.approve_card(aid, credential=k1_forged)
+        self.assertEqual(code_k1, 403)
+        self.assertEqual(resp_k1["code"], "INVALID_SHAMIR_SHARE")
+
+    def test_approve_threshold_enforces_expected_secret_hash(self):
+        expected_secret = b"RealControlPlaneSecret2026"
+        expected_hash = hashlib.sha256(expected_secret).hexdigest()
+        card = self.ledger.stage_card(
+            "nodebeta02",
+            "restart_node",
+            expected_secret_hash=expected_hash,
+        )
+        aid = card["action_id"]
+
+        wrong_shares = split_secret_shares(b"DifferentValidShamirSecret", k=2, n=3)
+        c1, _ = self.ledger.approve_card(aid, credential=wrong_shares[0])
+        self.assertEqual(c1, 200)
+        c2, r2 = self.ledger.approve_card(aid, credential=wrong_shares[1])
+        self.assertEqual(c2, 403)
+        self.assertEqual(r2["code"], "INVALID_SHAMIR_SHARE")
+
+        self.ledger.clear()
+        card2 = self.ledger.stage_card(
+            "nodebeta02",
+            "restart_node",
+            expected_secret_hash=expected_hash,
+        )
+        aid2 = card2["action_id"]
+        good_shares = split_secret_shares(expected_secret, k=2, n=3)
+        self.assertEqual(self.ledger.approve_card(aid2, credential=good_shares[0])[0], 200)
+        ok_code, ok_resp = self.ledger.approve_card(aid2, credential=good_shares[1])
+        self.assertEqual(ok_code, 200)
+        self.assertEqual(ok_resp["status"], "EXECUTED")
 
     def test_handle_action_api_status_filter_executed_returns_zero_for_staged(self):
         # Stage two cards

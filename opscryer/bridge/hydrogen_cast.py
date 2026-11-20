@@ -137,6 +137,22 @@ def _default_predump_dir() -> Path:
     env_dir = os.environ.get("MESHWORKS_PREDUMP_DIR", "").strip()
     if env_dir:
         return Path(env_dir)
+    data_dir_env = os.environ.get("BRAIN_DATA_DIR", "").strip()
+    if data_dir_env:
+        return Path(data_dir_env) / "predumped_bundle"
+    brain_home_env = os.environ.get("BRAIN_HOME", "").strip()
+    if brain_home_env:
+        home_dir = Path(brain_home_env)
+        cfg_file = home_dir / "config.json"
+        if cfg_file.is_file():
+            try:
+                cfg = json.loads(cfg_file.read_text(encoding="utf-8"))
+                cfg_data = str(cfg.get("data_dir") or "").strip() if isinstance(cfg, dict) else ""
+                if cfg_data:
+                    return Path(cfg_data) / "predumped_bundle"
+            except (OSError, json.JSONDecodeError):
+                pass
+        return home_dir / "data" / "predumped_bundle"
     return Path(__file__).resolve().parents[3] / "brain" / "data" / "predumped_bundle"
 
 
@@ -414,7 +430,7 @@ def _stdlib_cast_fallback(
         "kg_slice": anchor.get("subgraph_slice") or {"nodes": {}, "edges": []},
         "jev_anchors": list(anchor.get("jev_anchors") or []),
         "ollama_generate_payload": {
-            "model": model_name,
+            "model": effective_model,
             "system": sys_prompt,
             "prompt": usr_prompt,
             "stream": False,

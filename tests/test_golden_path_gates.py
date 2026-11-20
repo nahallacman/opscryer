@@ -151,7 +151,7 @@ class TestSixGateAudit(unittest.TestCase):
         self.git("config", "user.name", "Gate Tests")
         self.git("config", "user.email", "gates@example.invalid")
         self.write("module.py", (gates.SPDX_HEADER + "\nvalue = 1\n").encode())
-        for filename in ("sample-graph-data.json", "CODEX_OVERNIGHT_SWARM_TASKS.md"):
+        for filename in ("sample-graph-data.json", "EPIC_SCOPE_MANIFEST.md"):
             self.write(filename, (ROOT / filename).read_bytes().replace(b"\r\n", b"\n"))
         self.git("add", ".")
         self.git("-c", "core.hooksPath=", "commit", "--quiet", "-m", "test: add fixture")
@@ -239,7 +239,7 @@ class TestSixGateAudit(unittest.TestCase):
         self.assert_failed_gate("commit_subject")
 
     def test_manifest_overlap_missing_epic_and_missing_manifest(self):
-        filename = "CODEX_OVERNIGHT_SWARM_TASKS.md"
+        filename = "EPIC_SCOPE_MANIFEST.md"
         original = (self.root / filename).read_text(encoding="utf-8")
         epics = gates._manifest_epics(self.root)
         self.write(filename, original.replace(epics[1]["locked_scopes"][0],

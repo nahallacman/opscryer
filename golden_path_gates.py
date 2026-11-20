@@ -3,7 +3,7 @@
 
 Tracked-file checks inspect working-tree bytes, so Windows checkout conversion
 is visible. Commit policy applies to HEAD's subject. The nine-Epic lock manifest
-is CODEX_OVERNIGHT_SWARM_TASKS.md; missing inputs fail closed. No Git state changes.
+is EPIC_SCOPE_MANIFEST.md; missing inputs fail closed. No Git state changes.
 """
 
 from ipaddress import IPv4Address
@@ -131,7 +131,7 @@ def verify_epic_lock_disjointness(epics):
 
 
 def _manifest_epics(root):
-    text = (root / "CODEX_OVERNIGHT_SWARM_TASKS.md").read_text(encoding="utf-8")
+    text = (root / "EPIC_SCOPE_MANIFEST.md").read_text(encoding="utf-8")
     sections = re.split(r"(?m)^## (EPIC-\d+)\b[^\n]*\n", text)
     epics = []
     for index in range(1, len(sections), 2):

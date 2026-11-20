@@ -313,7 +313,7 @@ class TestOpsCryerPublicSmoke(unittest.TestCase):
                 self.assertEqual(route(response), 'human_escalation')
 
     def test_required_public_release_files_exist(self) -> None:
-        for name in ("AGENTS.md", "CODEX_OVERNIGHT_SWARM_TASKS.md", "LICENSE", "NOTICE.md"):
+        for name in ("AGENTS.md", "EPIC_SCOPE_MANIFEST.md", "LICENSE", "NOTICE.md"):
             self.assertTrue((ROOT / name).exists(), msg=f'Missing {name}')
 
     def test_presentation_runbook_documents_suite_portals(self) -> None:

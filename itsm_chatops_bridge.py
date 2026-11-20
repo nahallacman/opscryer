@@ -31,11 +31,7 @@ import pqc_security
 import security_airlock
 from telemetry_sanitizer import sanitize_live_home_telemetry_for_demo
 
-# Ensure pqc_security exposes verify_pqc_signature alias for pqc_verify compatibility
-if not hasattr(pqc_security, "verify_pqc_signature"):
-    setattr(pqc_security, "verify_pqc_signature", pqc_security.pqc_verify)
-
-verify_pqc_signature = pqc_security.pqc_verify
+verify_pqc_signature = pqc_security.verify_pqc_signature
 
 SUPPORTED_ITSM_PROVIDERS: frozenset[str] = frozenset({
     "gitlab_issues",

@@ -447,6 +447,8 @@ class ActionCardLedger:
         action_id: str | None = None,
         active_alerts: list[dict[str, Any]] | None = None,
         catalog: dict[str, Any] | None = None,
+        authorized_keys: list[str] | None = None,
+        expected_secret_hash: str | None = None,
     ) -> dict[str, Any]:
         """Stage a new Action Card in the ledger."""
         if parameters is None:
@@ -464,6 +466,10 @@ class ActionCardLedger:
         worrisomeness = evaluate_outcome_worrisomeness(
             preview, target_node_id, active_alerts=active_alerts, mutation_history=history_copy
         )
+        if authorized_keys is not None:
+            worrisomeness["authorized_keys"] = [str(k) for k in authorized_keys if str(k)]
+        if expected_secret_hash is not None:
+            worrisomeness["expected_secret_hash"] = str(expected_secret_hash)
 
         card: dict[str, Any] = {
             "action_id": aid,
@@ -482,6 +488,10 @@ class ActionCardLedger:
             "execution_result": None,
             "rejection_reason": None,
         }
+        if authorized_keys is not None:
+            card["authorized_keys"] = list(worrisomeness["authorized_keys"])
+        if expected_secret_hash is not None:
+            card["expected_secret_hash"] = str(expected_secret_hash)
 
         with self._lock:
             self._cards[aid] = card
@@ -604,7 +614,7 @@ class ActionCardLedger:
             elif "x" in credential and "data" in credential:
                 x_val = credential.get("x")
                 data_val = credential.get("data")
-                if not isinstance(x_val, int) or x_val < 1 or x_val > 255:
+                if not isinstance(x_val, int) or isinstance(x_val, bool) or x_val < 1 or x_val > 255:
                     return 403, {
                         "error": f"Invalid Shamir share coordinate x: {x_val}",
                         "code": "INVALID_SHAMIR_SHARE",
@@ -621,6 +631,25 @@ class ActionCardLedger:
                         "error": "Invalid Shamir share data: non-hexadecimal bytes",
                         "code": "INVALID_SHAMIR_SHARE",
                     }
+                k_val = credential.get("k")
+                if type(k_val) is not int or k_val < required_k:
+                    return 403, {
+                        "error": f"Invalid Shamir share threshold k={k_val!r}; required >= {required_k}",
+                        "code": "INVALID_SHAMIR_SHARE",
+                    }
+                fp_val = credential.get("fingerprint")
+                if not isinstance(fp_val, str) or len(fp_val) != 64:
+                    return 403, {
+                        "error": "Malformed Shamir share: missing 64-char SHA-256 fingerprint",
+                        "code": "INVALID_SHAMIR_SHARE",
+                    }
+                try:
+                    bytes.fromhex(fp_val)
+                except (ValueError, TypeError):
+                    return 403, {
+                        "error": "Invalid Shamir share fingerprint: non-hexadecimal bytes",
+                        "code": "INVALID_SHAMIR_SHARE",
+                    }
                 key_id = str(credential.get("key_id") or x_val)
                 if auth_keys and key_id not in auth_keys and str(x_val) not in auth_keys:
                     return 403, {
@@ -628,29 +657,9 @@ class ActionCardLedger:
                         "code": "UNAUTHORIZED_SHAREHOLDER",
                     }
 
-            # Case C: Keyholder Authorization Token
-            elif "key_id" in credential:
-                raw_kid = credential.get("key_id")
-                if not raw_kid or not isinstance(raw_kid, (str, int)):
-                    return 400, {
-                        "error": "Malformed keyholder credential: empty or invalid key_id",
-                        "code": "INVALID_CREDENTIALS",
-                    }
-                if not (credential.get("data") or credential.get("sig") or credential.get("token") or credential.get("secret")):
-                    return 400, {
-                        "error": "Keyholder credential missing authorization proof",
-                        "code": "INVALID_CREDENTIALS",
-                    }
-                key_id = str(raw_kid)
-                if auth_keys and key_id not in auth_keys:
-                    return 403, {
-                        "error": f"Shareholder '{key_id}' is not authorized for this action card",
-                        "code": "UNAUTHORIZED_SHAREHOLDER",
-                    }
-
             else:
                 return 400, {
-                    "error": "Malformed credential: must contain Shamir share (x, data) or PQC signature (signature, public_key)",
+                    "error": "Malformed credential: must contain Shamir share (x, data, k, fingerprint) or PQC signature (signature, public_key)",
                     "code": "INVALID_CREDENTIALS",
                 }
 

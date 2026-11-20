@@ -172,6 +172,7 @@ def build_suite_application_catalog(catalog=None) -> dict:
             "cli_module": "opscryer_browser",
             "target_audience": "Platform engineers and operators",
             "epic_id": "EPIC-1",
+            "execution_mode": "live_io",
             "ready": True,
         },
         {
@@ -182,6 +183,7 @@ def build_suite_application_catalog(catalog=None) -> dict:
             "cli_module": "ticket_chat_portal",
             "target_audience": "Household users and support teams",
             "epic_id": "EPIC-8",
+            "execution_mode": "snapshot_derived",
             "ready": True,
         },
         {
@@ -192,6 +194,7 @@ def build_suite_application_catalog(catalog=None) -> dict:
             "cli_module": "incident_commander",
             "target_audience": "On-call engineers and incident commanders",
             "epic_id": "EPIC-7",
+            "execution_mode": "snapshot_derived",
             "ready": True,
         },
         {
@@ -202,6 +205,7 @@ def build_suite_application_catalog(catalog=None) -> dict:
             "cli_module": "capacity_planner",
             "target_audience": "Capacity planners and GPU workload operators",
             "epic_id": "EPIC-8",
+            "execution_mode": "snapshot_derived",
             "ready": True,
         },
         {
@@ -212,6 +216,7 @@ def build_suite_application_catalog(catalog=None) -> dict:
             "cli_module": "network_topology_inspector",
             "target_audience": "Network engineers and identity administrators",
             "epic_id": "EPIC-5",
+            "execution_mode": "snapshot_derived",
             "ready": True,
         },
         {
@@ -222,6 +227,7 @@ def build_suite_application_catalog(catalog=None) -> dict:
             "cli_module": "gitops_release_cockpit",
             "target_audience": "Release managers and DevOps engineers",
             "epic_id": "EPIC-6",
+            "execution_mode": "snapshot_derived",
             "ready": True,
         },
         {
@@ -232,6 +238,7 @@ def build_suite_application_catalog(catalog=None) -> dict:
             "cli_module": "executive_command_center",
             "target_audience": "Executives, CISOs and governance teams",
             "epic_id": "EPIC-9",
+            "execution_mode": "snapshot_derived",
             "ready": True,
         },
         {
@@ -242,6 +249,7 @@ def build_suite_application_catalog(catalog=None) -> dict:
             "cli_module": "opscryer_suite_hub",
             "target_audience": "All OpsCryer users",
             "epic_id": "EPIC-1",
+            "execution_mode": "snapshot_derived",
             "ready": True,
         },
     ]
@@ -251,11 +259,11 @@ def build_suite_application_catalog(catalog=None) -> dict:
         "applications": applications,
         "compatibility_and_live_extensions": [
             {"route": "/metrics-live", "title": "Live Metrics",
-             "api_route": "/api/v1/live-metrics"},
+             "api_route": "/api/v1/live-metrics", "execution_mode": "live_io"},
             {"route": "/adapters", "title": "Environment Adapters",
-             "api_route": "/api/v1/environment-adapters"},
+             "api_route": "/api/v1/environment-adapters", "execution_mode": "snapshot_derived"},
             {"route": "/docs", "title": "API Documentation",
-             "api_route": "/api/v1/openapi.json"},
+             "api_route": "/api/v1/openapi.json", "execution_mode": "snapshot_derived"},
         ],
     })
 
@@ -359,7 +367,7 @@ const checks = applications.map(app => {
   card.className = 'card';
   const badge = document.createElement('span');
   badge.className = 'badge';
-  badge.textContent = app.epic_id;
+  badge.textContent = app.epic_id + ' | ' + app.execution_mode;
   card.appendChild(badge);
   const heading = document.createElement('h2');
   const link = document.createElement('a');

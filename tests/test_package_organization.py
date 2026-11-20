@@ -42,7 +42,7 @@ class TestPackageOrganization(unittest.TestCase):
             metadata = tomllib.load(stream)
         project = metadata['project']
         self.assertEqual(project['name'], 'opscryer')
-        self.assertEqual(project['version'], '1.2.0')
+        self.assertEqual(project['version'], '1.2.1')
         self.assertEqual(project['requires-python'], '>=3.11')
         self.assertEqual(project['license'], {'text': 'Apache-2.0'})
         self.assertEqual(project['dependencies'], [])

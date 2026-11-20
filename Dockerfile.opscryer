@@ -6,16 +6,18 @@ WORKDIR /opscryer
 
 # Copy the OpsCryer browser and its stdlib-only runtime
 COPY *.py ./
+COPY bridge ./bridge
 COPY opscryer ./opscryer
-COPY sample-graph-data.json live-cluster-sanitized.json settled_production_systems.yaml ./
+COPY index.html config.public.example.yaml sample-graph-data.json live-cluster-sanitized.json settled_production_systems.yaml ./
 
 # External Knowledge Graph mounts live under /data (never overwrite sample-graph-data.json).
 # Example:
 #   docker run -p 8088:8088 -v /host/path/knowledge-graph.json:/data/knowledge-graph.json:ro \
 #     -e OPSCRYER_GRAPH_FILE=/data/knowledge-graph.json opscryer:latest
-RUN mkdir -p /data
+RUN mkdir -p /data && useradd --create-home --uid 10001 --shell /usr/sbin/nologin opscryer && chown -R 10001:10001 /opscryer /data
 
 # No external dependencies — opscryer_browser.py uses only Python stdlib
+USER 10001
 
 EXPOSE 8088
 

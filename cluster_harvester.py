@@ -88,7 +88,51 @@ def _offline_snapshot(reason="live_not_requested"):
                                   "nodegamma03 400m 5% 2048Mi 20%\n"})
 
 
-def _slim_containers(containers):
+def _slim_security_context(sc, *, synthesize_demo_defaults=False):
+    """Preserve real container/pod securityContext verbatim; only synthesize defaults for demo fixtures."""
+    if synthesize_demo_defaults:
+        sc_dict = sc if isinstance(sc, dict) else {}
+        slim_sc = {
+            "runAsNonRoot": sc_dict.get("runAsNonRoot") if isinstance(sc_dict.get("runAsNonRoot"), bool) else True,
+            "runAsUser": sc_dict.get("runAsUser") if type(sc_dict.get("runAsUser")) is int and sc_dict.get("runAsUser") > 0 else 10000,
+            "readOnlyRootFilesystem": sc_dict.get("readOnlyRootFilesystem") if isinstance(sc_dict.get("readOnlyRootFilesystem"), bool) else True,
+            "allowPrivilegeEscalation": sc_dict.get("allowPrivilegeEscalation") if isinstance(sc_dict.get("allowPrivilegeEscalation"), bool) else False,
+            "capabilities": {"drop": ["ALL"]},
+        }
+        if isinstance(sc_dict.get("privileged"), bool):
+            slim_sc["privileged"] = sc_dict["privileged"]
+        return slim_sc
+
+    if not isinstance(sc, dict) or not sc:
+        return None
+    slim_sc = {}
+    for bool_field in ("runAsNonRoot", "readOnlyRootFilesystem", "allowPrivilegeEscalation", "privileged"):
+        if isinstance(sc.get(bool_field), bool):
+            slim_sc[bool_field] = sc[bool_field]
+    for int_field in ("runAsUser", "runAsGroup", "fsGroup"):
+        val = sc.get(int_field)
+        # Preserve explicit UID/GID values verbatim, including root (0).
+        if type(val) is int and val >= 0:
+            slim_sc[int_field] = val
+    caps = sc.get("capabilities")
+    if isinstance(caps, dict):
+        kept_caps = {}
+        for cap_key in ("add", "drop"):
+            vals = caps.get(cap_key)
+            if isinstance(vals, list):
+                kept_caps[cap_key] = [str(item) for item in vals if isinstance(item, str) and item.strip()]
+        if kept_caps:
+            slim_sc["capabilities"] = kept_caps
+    seccomp = sc.get("seccompProfile")
+    if isinstance(seccomp, dict) and isinstance(seccomp.get("type"), str) and seccomp["type"].strip():
+        kept_seccomp = {"type": seccomp["type"].strip()}
+        if isinstance(seccomp.get("localhostProfile"), str) and seccomp["localhostProfile"].strip():
+            kept_seccomp["localhostProfile"] = seccomp["localhostProfile"].strip()
+        slim_sc["seccompProfile"] = kept_seccomp
+    return slim_sc or None
+
+
+def _slim_containers(containers, *, synthesize_demo_defaults=False):
     if not isinstance(containers, list):
         return []
     out = []
@@ -111,17 +155,12 @@ def _slim_containers(containers):
                 "memory": str(lim.get("memory") or "512Mi"),
             },
         }
-        sc = c.get("securityContext") if isinstance(c.get("securityContext"), dict) else {}
-        slim_sc = {
-            "runAsNonRoot": sc.get("runAsNonRoot") if isinstance(sc.get("runAsNonRoot"), bool) else True,
-            "runAsUser": sc.get("runAsUser") if type(sc.get("runAsUser")) is int and sc.get("runAsUser") > 0 else 10000,
-            "readOnlyRootFilesystem": sc.get("readOnlyRootFilesystem") if isinstance(sc.get("readOnlyRootFilesystem"), bool) else True,
-            "allowPrivilegeEscalation": sc.get("allowPrivilegeEscalation") if isinstance(sc.get("allowPrivilegeEscalation"), bool) else False,
-            "capabilities": {"drop": ["ALL"]},
-        }
-        if isinstance(sc.get("privileged"), bool):
-            slim_sc["privileged"] = sc["privileged"]
-        entry["securityContext"] = slim_sc
+        slim_sc = _slim_security_context(
+            c.get("securityContext"),
+            synthesize_demo_defaults=synthesize_demo_defaults,
+        )
+        if slim_sc is not None:
+            entry["securityContext"] = slim_sc
         out.append(entry)
     return out
 
@@ -166,9 +205,12 @@ def _slim_item(item):
         slim_spec["selector"] = spec["selector"]
     elif kind == "Pod":
         if isinstance(spec.get("containers"), list) and spec["containers"]:
-            slim_spec["containers"] = _slim_containers(spec["containers"])
+            slim_spec["containers"] = _slim_containers(spec["containers"], synthesize_demo_defaults=False)
         if isinstance(spec.get("initContainers"), list) and spec["initContainers"]:
-            slim_spec["initContainers"] = _slim_containers(spec["initContainers"])
+            slim_spec["initContainers"] = _slim_containers(spec["initContainers"], synthesize_demo_defaults=False)
+        pod_sc = _slim_security_context(spec.get("securityContext"), synthesize_demo_defaults=False)
+        if pod_sc is not None:
+            slim_spec["securityContext"] = pod_sc
         if isinstance(spec.get("volumes"), list):
             vols = [
                 {"persistentVolumeClaim": {"claimName": v["persistentVolumeClaim"]["claimName"]}}
@@ -182,10 +224,16 @@ def _slim_item(item):
                 slim_spec["volumes"] = vols
     elif kind == "Deployment" and isinstance(spec.get("template"), dict):
         tmpl_spec = spec["template"].get("spec") if isinstance(spec["template"].get("spec"), dict) else {}
+        slim_tmpl_spec = {}
         if isinstance(tmpl_spec.get("containers"), list) and tmpl_spec["containers"]:
-            slim_spec["template"] = {"spec": {"containers": _slim_containers(tmpl_spec["containers"])}}
-            if isinstance(tmpl_spec.get("initContainers"), list) and tmpl_spec["initContainers"]:
-                slim_spec["template"]["spec"]["initContainers"] = _slim_containers(tmpl_spec["initContainers"])
+            slim_tmpl_spec["containers"] = _slim_containers(tmpl_spec["containers"], synthesize_demo_defaults=False)
+        if isinstance(tmpl_spec.get("initContainers"), list) and tmpl_spec["initContainers"]:
+            slim_tmpl_spec["initContainers"] = _slim_containers(tmpl_spec["initContainers"], synthesize_demo_defaults=False)
+        tmpl_sc = _slim_security_context(tmpl_spec.get("securityContext"), synthesize_demo_defaults=False)
+        if tmpl_sc is not None:
+            slim_tmpl_spec["securityContext"] = tmpl_sc
+        if slim_tmpl_spec:
+            slim_spec["template"] = {"spec": slim_tmpl_spec}
     status = item.get("status") if isinstance(item.get("status"), dict) else {}
     slim_status = {}
     if isinstance(status.get("addresses"), list):
@@ -478,17 +526,23 @@ def refresh_bundled_catalog(path=None):
         elif kind == "Pod":
             spec = res.setdefault("spec", {})
             cname = res.get("metadata", {}).get("name") or node.get("label") or "app"
-            spec["containers"] = _slim_containers(spec.get("containers") or [{"name": cname}])
+            spec["containers"] = _slim_containers(
+                spec.get("containers") or [{"name": cname}],
+                synthesize_demo_defaults=True,
+            )
             if "initContainers" in spec:
-                spec["initContainers"] = _slim_containers(spec["initContainers"])
+                spec["initContainers"] = _slim_containers(spec["initContainers"], synthesize_demo_defaults=True)
         elif kind == "Deployment":
             spec = res.setdefault("spec", {})
             cname = res.get("metadata", {}).get("name") or node.get("label") or "app"
             tmpl = spec.setdefault("template", {})
             tspec = tmpl.setdefault("spec", {})
-            tspec["containers"] = _slim_containers(tspec.get("containers") or [{"name": cname}])
+            tspec["containers"] = _slim_containers(
+                tspec.get("containers") or [{"name": cname}],
+                synthesize_demo_defaults=True,
+            )
             if "initContainers" in tspec:
-                tspec["initContainers"] = _slim_containers(tspec["initContainers"])
+                tspec["initContainers"] = _slim_containers(tspec["initContainers"], synthesize_demo_defaults=True)
         kept_nodes.append(node)
     # Ensure a synthetic failed runner job pod exists in gitlab namespace for health/diff demo tests
     demo_failed_id = "k8s/Pod/gitlab/runner-job-demo-failed"
@@ -506,7 +560,7 @@ def refresh_bundled_catalog(path=None):
             "resource": {
                 "kind": "Pod",
                 "metadata": {"name": "runner-job-demo-failed", "namespace": "gitlab", "labels": {"app": "gitlab-example"}},
-                "spec": {"nodeName": "nodealpha01", "containers": _slim_containers([{"name": "runner-job"}])},
+                "spec": {"nodeName": "nodealpha01", "containers": _slim_containers([{"name": "runner-job"}], synthesize_demo_defaults=True)},
                 "status": {"phase": "Failed"},
             },
         })
@@ -553,7 +607,7 @@ def refresh_bundled_catalog(path=None):
             "resource": {
                 "kind": "Deployment",
                 "metadata": {"name": "sandbox-worker", "namespace": "ai-sandbox", "labels": {"app": "sandbox-worker"}},
-                "spec": {"replicas": 1, "template": {"spec": {"containers": _slim_containers([{"name": "sandbox-worker"}])}}},
+                "spec": {"replicas": 1, "template": {"spec": {"containers": _slim_containers([{"name": "sandbox-worker"}], synthesize_demo_defaults=True)}}},
                 "status": {"readyReplicas": 1},
             },
         })

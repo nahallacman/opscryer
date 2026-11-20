@@ -16,6 +16,7 @@ import cluster_harvester as cluster
 import opscryer_backend as backend
 from opscryer_backend import KnowledgeGraphBackendEngine, validate_spatial_graph_contract
 from golden_path_gates import _opsec_count
+from security_airlock import audit_container_security_context
 from tests.test_opscryer_public_smoke import ROOT, opsec_findings, scan_public_files
 
 
@@ -229,6 +230,55 @@ class ClusterHarvesterTests(unittest.TestCase):
         self.assertFalse(any(opsec_findings(content).values()))
         self.assertEqual(_opsec_count(content), 0)
         self.assertFalse(any(scan_public_files(ROOT).values()))
+
+    def test_live_harvest_preserves_insecure_security_context_verbatim(self):
+        raw_inventory = {
+            "items": [
+                {
+                    "kind": "Pod",
+                    "metadata": {"name": "insecure-pod", "namespace": "default"},
+                    "spec": {
+                        "containers": [
+                            {"name": "no-sc-container"},
+                            {
+                                "name": "root-cap-container",
+                                "securityContext": {
+                                    "runAsUser": 0,
+                                    "runAsNonRoot": False,
+                                    "allowPrivilegeEscalation": True,
+                                    "capabilities": {"add": ["SYS_ADMIN"]},
+                                },
+                            },
+                        ]
+                    },
+                }
+            ]
+        }
+        responses = [
+            subprocess.CompletedProcess([], 0, json.dumps(raw_inventory), ""),
+            subprocess.CompletedProcess([], 0, "NAME CPU CPU% MEMORY MEMORY%\n", ""),
+        ]
+        with patch.object(cluster.shutil, "which", return_value="kubectl"), \
+                patch.object(cluster.subprocess, "run", side_effect=responses):
+            live = cluster.harvest_live_k8s_cluster(timeout=2)
+
+        pod_item = live["items"][0]
+        containers = {c["name"]: c for c in pod_item["spec"]["containers"]}
+
+        self.assertNotIn("securityContext", containers["no-sc-container"])
+        self.assertFalse(audit_container_security_context(containers["no-sc-container"])["compliant"])
+
+        root_sc = containers["root-cap-container"]["securityContext"]
+        self.assertEqual(root_sc["runAsUser"], 0)
+        self.assertFalse(root_sc["runAsNonRoot"])
+        self.assertTrue(root_sc["allowPrivilegeEscalation"])
+        self.assertEqual(root_sc["capabilities"], {"add": ["SYS_ADMIN"]})
+        audit = audit_container_security_context(containers["root-cap-container"])
+        self.assertFalse(audit["compliant"])
+        self.assertEqual(
+            audit["violations"],
+            ["runAsNonRoot", "runAsUser", "allowPrivilegeEscalation", "capabilities.drop"],
+        )
 
 
 if __name__ == "__main__":

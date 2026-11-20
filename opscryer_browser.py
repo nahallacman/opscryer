@@ -110,12 +110,36 @@ def configure_gateway_logging(
     return logger
 
 
+REQUEST_SOCKET_TIMEOUT_S = 15.0
+MAX_CONCURRENT_HTTP_WORKERS = 64
+
 if not issubclass(socketserver.TCPServer, socketserver.ThreadingMixIn):
     class _ReusableTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
-        """Serve concurrent portal requests and allow immediate socket reuse."""
+        """Serve concurrent portal requests within bounded thread workers and allow socket reuse."""
 
         allow_reuse_address = True
         daemon_threads = True
+        max_concurrent_workers = MAX_CONCURRENT_HTTP_WORKERS
+
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            self._worker_semaphore = threading.BoundedSemaphore(self.max_concurrent_workers)
+            super().__init__(*args, **kwargs)
+
+        def process_request(self, request: Any, client_address: Any) -> None:
+            if not self._worker_semaphore.acquire(blocking=False):
+                self.shutdown_request(request)
+                return
+            try:
+                super().process_request(request, client_address)
+            except BaseException:
+                self._worker_semaphore.release()
+                raise
+
+        def process_request_thread(self, request: Any, client_address: Any) -> None:
+            try:
+                super().process_request_thread(request, client_address)
+            finally:
+                self._worker_semaphore.release()
 
 
     # Preserve the shared constructor lookup used by browser/suite CLI mocks.
@@ -141,12 +165,20 @@ def _permitted_host_suffixes_from_env() -> tuple[str, ...]:
     return tuple(dict.fromkeys(defaults))
 
 
+_PERMITTED_GATEWAY_IP_NETWORKS = (
+    ipaddress.ip_network("127.0.0.0/8"),
+    ipaddress.ip_network("10.0.0.0/8"),
+    ipaddress.ip_network("172.16.0.0/12"),
+    ipaddress.ip_network("192.168.0.0/16"),
+    ipaddress.ip_network("::1/128"),
+    ipaddress.ip_network("fc00::/7"),
+)
+
+
 def _is_permitted_gateway_host(raw_host: str) -> bool:
-    """Allow loopback, cluster/local DNS suffixes, or configured hosts to prevent DNS rebinding."""
+    """Allow loopback, RFC1918 private IPs, cluster/local DNS suffixes, or configured hosts."""
     text = str(raw_host or "").strip()
-    if not text:
-        return True
-    if "@" in text or any(ch.isspace() or ord(ch) < 32 or ord(ch) == 127 for ch in text):
+    if not text or "@" in text or any(ch.isspace() or ord(ch) < 32 or ord(ch) == 127 for ch in text):
         return False
     parsed = urlsplit(f"http://{text}")
     host_only = (parsed.hostname or "").strip().lower().strip("[]")
@@ -167,8 +199,40 @@ def _is_permitted_gateway_host(raw_host: str) -> bool:
         addr = ipaddress.ip_address(host_only)
     except ValueError:
         return False
-    # Reject unspecified, link-local IMDS (169.254/16, fe80::/10), and multicast IP literals.
-    return not addr.is_unspecified and not addr.is_link_local and not addr.is_multicast
+    # Allow only loopback, RFC1918 IPv4, or IPv6 ULA literals; block public, RFC 5737, IMDS, multicast, and unspecified IPs.
+    return any(addr in net for net in _PERMITTED_GATEWAY_IP_NETWORKS)
+
+
+def _resolve_frame_ancestors_csp() -> str | None:
+    """Build strict CSP frame-ancestors policy from OPSCRYER_FRAME_ANCESTORS when configured."""
+    raw = os.environ.get("OPSCRYER_FRAME_ANCESTORS", "").strip()
+    if not raw:
+        return None
+    valid_tokens: list[str] = []
+    for item in raw.replace(",", " ").split():
+        token = item.strip()
+        if not token or ";" in token or any(ord(ch) < 32 or ord(ch) == 127 for ch in token):
+            continue
+        low = token.lower()
+        if low in {"'self'", "'none'"}:
+            valid_tokens.append(low)
+            continue
+        parsed = urlsplit(token)
+        # Accept only explicit http/https origins without credentials, path, query, or fragment.
+        if (
+            parsed.scheme.lower() in {"http", "https"}
+            and bool(parsed.hostname)
+            and bool(parsed.netloc)
+            and not parsed.username
+            and not parsed.password
+            and parsed.path in {"", "/"}
+            and not parsed.query
+            and not parsed.fragment
+        ):
+            valid_tokens.append(f"{parsed.scheme.lower()}://{parsed.netloc}")
+    if not valid_tokens:
+        return None
+    return "frame-ancestors " + " ".join(dict.fromkeys(valid_tokens))
 
 
 def _validate_post_request_security(headers: Any) -> tuple[bool, int, str]:
@@ -181,9 +245,10 @@ def _validate_post_request_security(headers: Any) -> tuple[bool, int, str]:
     source_url = origin or referer
     if source_url:
         parsed = urlsplit(source_url)
-        # Reject non-HTTP schemes, embedded credentials, or external origins/referers.
+        # Reject non-HTTP schemes, missing netloc, embedded credentials, or external origins/referers.
         if (
             parsed.scheme.lower() not in {"http", "https"}
+            or not parsed.netloc
             or parsed.username
             or parsed.password
             or not _is_permitted_gateway_host(parsed.netloc)
@@ -3584,17 +3649,41 @@ def _external_graph_mtime_signature() -> tuple[str, int] | None:
     return (str(ext_path), ext_path.stat().st_mtime_ns)
 
 
+def _resolve_brain_data_dir() -> tuple[Path, Path]:
+    """Resolve Brain root and data directory from OPSCRYER_BRAIN_ROOT, BRAIN_DATA_DIR, BRAIN_HOME, or sibling."""
+    brain_root_env = os.environ.get("OPSCRYER_BRAIN_ROOT", "").strip()
+    if brain_root_env:
+        root = Path(brain_root_env)
+        return root, root / "data"
+    data_dir_env = os.environ.get("BRAIN_DATA_DIR", "").strip()
+    if data_dir_env:
+        data_dir = Path(data_dir_env)
+        return data_dir.parent, data_dir
+    brain_home_env = os.environ.get("BRAIN_HOME", "").strip()
+    if brain_home_env:
+        home_dir = Path(brain_home_env)
+        cfg_file = home_dir / "config.json"
+        if cfg_file.is_file():
+            try:
+                cfg = json.loads(cfg_file.read_text(encoding="utf-8"))
+                cfg_data = str(cfg.get("data_dir") or "").strip() if isinstance(cfg, dict) else ""
+                if cfg_data:
+                    return home_dir, Path(cfg_data)
+            except (OSError, json.JSONDecodeError):
+                pass
+        return home_dir, home_dir / "data"
+    sibling_root = Path(__file__).resolve().parent.parent / "brain"
+    return sibling_root, sibling_root / "data"
+
+
 def _resolve_ecosystem_paths() -> dict[str, Path]:
     """Resolve Brain and Meshworks artifact paths for optional live ecosystem graph overlay."""
-    brain_root = Path(
-        os.environ.get("OPSCRYER_BRAIN_ROOT")
-        or (Path(__file__).resolve().parent.parent / "brain")
-    )
+    brain_root, data_dir = _resolve_brain_data_dir()
     manifest_override = os.environ.get("OPSCRYER_BRAIN_MANIFEST")
     if manifest_override:
         manifest_path = Path(manifest_override)
     else:
-        data_manifest = brain_root / "data" / "skills-manifest.json"
+        data_manifest = data_dir / "skills-manifest.json"
         flat_manifest = brain_root / "skills-manifest.json"
         # Prefer Brain's canonical data/skills-manifest.json, falling back to flat test fixture layout.
         if data_manifest.is_file():
@@ -3605,9 +3694,9 @@ def _resolve_ecosystem_paths() -> dict[str, Path]:
             manifest_path = data_manifest
     return {
         "manifest": manifest_path,
-        "state": Path(os.environ.get("OPSCRYER_BRAIN_STATE") or (brain_root / "data" / "skill_watch_state.json")),
-        "alerts": Path(os.environ.get("OPSCRYER_BRAIN_ALERTS") or (brain_root / "data" / "skill_watch_alerts.json")),
-        "meshworks_graph": Path(os.environ.get("OPSCRYER_MESHWORKS_GRAPH") or (brain_root / "data" / "knowledge-graph.json")),
+        "state": Path(os.environ.get("OPSCRYER_BRAIN_STATE") or (data_dir / "skill_watch_state.json")),
+        "alerts": Path(os.environ.get("OPSCRYER_BRAIN_ALERTS") or (data_dir / "skill_watch_alerts.json")),
+        "meshworks_graph": Path(os.environ.get("OPSCRYER_MESHWORKS_GRAPH") or (data_dir / "knowledge-graph.json")),
     }
 
 
@@ -3751,6 +3840,11 @@ def _build_frontend_handler(default_api_base: str = "",
         _server_start_time: float = _gateway_start_time
         _readiness_override: bool | None = None
 
+        def setup(self) -> None:
+            if hasattr(self.request, "settimeout"):
+                self.request.settimeout(REQUEST_SOCKET_TIMEOUT_S)
+            super().setup()
+
         @classmethod
         def _get_unified_catalog(cls, *, include_ecosystem: bool) -> dict[str, Any]:
             cache_sig = (
@@ -3857,6 +3951,13 @@ def _build_frontend_handler(default_api_base: str = "",
                 "config_loaded": config_loaded,
             }
 
+        def _send_frame_headers(self) -> None:
+            csp = _resolve_frame_ancestors_csp()
+            if csp:
+                self.send_header("Content-Security-Policy", csp)
+            else:
+                self.send_header("X-Frame-Options", "DENY")
+
         def _send_json(self, status: int, payload: dict[str, Any]) -> None:
             self._send_bytes(status, json.dumps(payload).encode("utf-8"),
                              "application/json; charset=utf-8")
@@ -3889,7 +3990,7 @@ def _build_frontend_handler(default_api_base: str = "",
             self.send_response(status)
             self.send_header("Content-Type", content_type)
             self.send_header("X-Content-Type-Options", "nosniff")
-            self.send_header("X-Frame-Options", "DENY")
+            self._send_frame_headers()
             self.send_header("Referrer-Policy", "no-referrer")
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
@@ -3900,7 +4001,7 @@ def _build_frontend_handler(default_api_base: str = "",
                 self.send_response(403)
                 self.send_header("Content-Type", "application/json; charset=utf-8")
                 self.send_header("X-Content-Type-Options", "nosniff")
-                self.send_header("X-Frame-Options", "DENY")
+                self._send_frame_headers()
                 self.send_header("Referrer-Policy", "no-referrer")
                 self.send_header("Content-Length", "0")
                 self.end_headers()
@@ -3926,7 +4027,7 @@ def _build_frontend_handler(default_api_base: str = "",
                 self.send_response(status)
                 self.send_header("Content-Type", ct)
                 self.send_header("X-Content-Type-Options", "nosniff")
-                self.send_header("X-Frame-Options", "DENY")
+                self._send_frame_headers()
                 self.send_header("Referrer-Policy", "no-referrer")
                 self.send_header("Content-Length", str(body_len))
                 self.end_headers()
@@ -3934,7 +4035,7 @@ def _build_frontend_handler(default_api_base: str = "",
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.send_header("X-Content-Type-Options", "nosniff")
-            self.send_header("X-Frame-Options", "DENY")
+            self._send_frame_headers()
             self.send_header("Referrer-Policy", "no-referrer")
             self.send_header("Content-Length", "0")
             self.end_headers()
@@ -4589,10 +4690,12 @@ def _build_frontend_handler(default_api_base: str = "",
                         _SSE_ACTIVE_STREAMS += 1
 
                     try:
+                        if hasattr(self.request, "settimeout"):
+                            self.request.settimeout(None)
                         self.send_response(200)
                         self.send_header("Content-Type", "text/event-stream; charset=utf-8")
                         self.send_header("X-Content-Type-Options", "nosniff")
-                        self.send_header("X-Frame-Options", "DENY")
+                        self._send_frame_headers()
                         self.send_header("Referrer-Policy", "no-referrer")
                         self.send_header("Cache-Control", "no-cache")
                         if parsed_max_events is not None:
@@ -4816,7 +4919,10 @@ def _build_frontend_handler(default_api_base: str = "",
                 if url.path == "/api/v1/cast/hydrogen":
                     from opscryer.bridge.hydrogen_cast import handle_hydrogen_cast_request
 
-                    status, payload = handle_hydrogen_cast_request(body)
+                    engine = self._get_backend_engine()
+                    catalog_attr = getattr(engine, "catalog", None)
+                    catalog = catalog_attr() if callable(catalog_attr) else catalog_attr
+                    status, payload = handle_hydrogen_cast_request(body, catalog=catalog)
                     self._send_json(status, payload)
                     return
 
@@ -4907,8 +5013,8 @@ def main(argv: list[str] | None = None) -> int:
         configure_gateway_logging()
         _FrontendHandler = _build_frontend_handler(effective_api_base)
         try:
-            with socketserver.TCPServer((args.host, args.port), _FrontendHandler) as httpd:
-                print(f"Serving Standalone Frontend Browser (Piece A) at http://{args.host}:{args.port}")
+            with socketserver.TCPServer((args.host, effective_port), _FrontendHandler) as httpd:
+                print(f"Serving Standalone Frontend Browser (Piece A) at http://{args.host}:{effective_port}")
                 httpd.serve_forever()
         except OSError:
             parser.error("Requested --port is already in use; stop the existing server or choose another --port")

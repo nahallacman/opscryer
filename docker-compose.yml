@@ -5,7 +5,7 @@
 #   - opscryer:  Python browser (opscryer_browser.py) on :8088
 #   - backstage: Backstage 2.0 app with the OpsCryer frontend plugin
 #
-# The Backstage iframe points to http://opscryer:8088 via the
+# The Backstage iframe points to http://localhost:8088 via the
 # integrations.opscryer[].baseUrl config (OPSCRYER_BROWSER_URL env var).
 #
 # Prerequisites:
@@ -24,13 +24,14 @@ services:
       context: .
       dockerfile: Dockerfile.opscryer
     container_name: opscryer-browser
+    environment:
+      - OPSCRYER_FRAME_ANCESTORS=http://localhost:3001
     # To mount an external Knowledge Graph outside the OpsCryer tool repository:
-    # environment:
     #   - OPSCRYER_GRAPH_FILE=/data/knowledge-graph.json
     # volumes:
     #   - /path/to/external/knowledge-graph.json:/data/knowledge-graph.json:ro
     ports:
-      - "8089:8088"
+      - "8088:8088"
     networks:
       - opscryer-backstage
     healthcheck:
@@ -52,8 +53,8 @@ services:
       opscryer:
         condition: service_healthy
     environment:
-      # Point Backstage at the OpsCryer browser container via Docker DNS
-      - OPSCRYER_BROWSER_URL=http://opscryer:8088
+      # Point the user's browser iframe at OpsCryer published on host port 8088
+      - OPSCRYER_BROWSER_URL=http://localhost:8088
     networks:
       - opscryer-backstage
 

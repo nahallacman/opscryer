@@ -181,7 +181,7 @@ def sign_pqc_message(
     private_key: dict[str, Any],
 ) -> dict[str, Any]:
     """Sign message payload using WOTS+ Merkle tree private key."""
-    return pqc_security.pqc_sign(_ensure_message_bytes(message), private_key)
+    return pqc_security.sign_pqc_message(message, private_key)
 
 
 def verify_pqc_signature(
@@ -190,21 +190,7 @@ def verify_pqc_signature(
     public_key: dict[str, Any],
 ) -> bool:
     """Verify WOTS+ Merkle tree signature against message and public key."""
-    # Ensure signature and public_key are valid dictionaries before verification
-    if not isinstance(signature, dict) or not isinstance(public_key, dict):
-        return False
-    try:
-        msg_bytes = _ensure_message_bytes(message)
-    except TypeError:
-        return False
-    return pqc_security.pqc_verify(msg_bytes, signature, public_key)
-
-
-# Register convenience aliases on pqc_security module if not already defined
-if not hasattr(pqc_security, "sign_pqc_message"):
-    pqc_security.sign_pqc_message = sign_pqc_message  # type: ignore[attr-defined]
-if not hasattr(pqc_security, "verify_pqc_signature"):
-    pqc_security.verify_pqc_signature = verify_pqc_signature  # type: ignore[attr-defined]
+    return pqc_security.verify_pqc_signature(message, signature, public_key)
 
 
 # =====================================================================

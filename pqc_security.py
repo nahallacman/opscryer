@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Pure-stdlib post-quantum cryptographic primitives & Shamir Secret Sharing.
+"""Pure-stdlib WOTS+ Merkle signatures, X25519+SHAKE-256 AEAD, & Shamir Secret Sharing.
 
 Implements:
-1. Winternitz OTS+ (WOTS+) with binary Merkle tree root authentication.
-2. Curve25519 + SHAKE-256 + HMAC-SHA3-512 hybrid post-quantum AEAD envelope.
+1. Stateful Winternitz OTS+ (WOTS+) with binary Merkle tree root authentication (post-quantum hash-based signatures).
+2. Classical Curve25519 (X25519) ECDH + SHAKE-256 + HMAC-SHA3-512 AEAD envelope (note: X25519 KEM is classical, not ML-KEM).
 3. Galois Field GF(256) Shamir Secret Sharing (1-of-1 and k-of-n threshold locks).
 
 Zero external dependencies (pure Python 3.11+ stdlib).
@@ -17,7 +17,10 @@ import hmac
 import json
 import secrets
 import struct
+import threading
 from typing import Any
+
+_PQC_SIGN_LOCK = threading.Lock()
 
 # =====================================================================
 # 1. Galois Field GF(256) Arithmetic & Shamir Secret Sharing
@@ -114,26 +117,44 @@ def split_secret_shares(secret: bytes, k: int, n: int) -> list[dict[str, Any]]:
     ]
 
 
-def reconstruct_secret_from_shares(shares: list[dict[str, Any]]) -> bytes:
+def reconstruct_secret_from_shares(
+    shares: list[dict[str, Any]],
+    min_k: int | None = None,
+) -> bytes:
     """Reconstruct a secret from at least k shares via Lagrange interpolation in GF(256)."""
     if not shares:
         raise ValueError("No shares provided for secret reconstruction")
     if not isinstance(shares, list):
         raise TypeError("Shares must be provided as a list of share dicts")
 
-    k = shares[0].get("k", 1)
+    k = shares[0].get("k")
+    if type(k) is not int or k < 1:
+        raise ValueError(f"Invalid share threshold k: {k!r}")
+    if min_k is not None:
+        eff_min_k = int(min_k)
+        if eff_min_k < 1:
+            raise ValueError(f"Invalid min_k threshold: {min_k}")
+        if k < eff_min_k:
+            raise ValueError(f"Share threshold k={k} is below required threshold {eff_min_k}")
+
     expected_fp = shares[0].get("fingerprint")
     expected_len = len(bytes.fromhex(shares[0]["data"]))
 
     if len(shares) < k:
         raise ValueError(f"Insufficient shares: got {len(shares)}, required threshold k={k}")
 
-    # Validate distinct x coordinates and uniform share lengths
+    # Validate distinct x coordinates, uniform thresholds/fingerprints, and share lengths
     seen_x = set()
     usable_shares: list[tuple[int, bytes]] = []
     for s in shares:
+        if not isinstance(s, dict):
+            raise ValueError("Each share must be a dict")
+        if s.get("k") != k:
+            raise ValueError(f"Share threshold mismatch: expected k={k}, got {s.get('k')!r}")
+        if expected_fp and s.get("fingerprint") != expected_fp:
+            raise ValueError("Share fingerprint metadata mismatch across submitted shares")
         x = s.get("x")
-        if not isinstance(x, int) or x < 1 or x > 255:
+        if not isinstance(x, int) or isinstance(x, bool) or x < 1 or x > 255:
             raise ValueError(f"Invalid share x coordinate: {x}")
         if x in seen_x:
             continue  # Ignore duplicate shares for the same x
@@ -151,7 +172,7 @@ def reconstruct_secret_from_shares(shares: list[dict[str, Any]]) -> bytes:
     # 1-of-1 fast-pass
     if k == 1:
         reconstructed = usable_shares[0][1]
-        if expected_fp and hashlib.sha256(reconstructed).hexdigest() != expected_fp:
+        if expected_fp and not hmac.compare_digest(hashlib.sha256(reconstructed).hexdigest(), str(expected_fp)):
             raise ValueError("Reconstructed secret failed fingerprint integrity check")
         return reconstructed
 
@@ -178,10 +199,20 @@ def reconstruct_secret_from_shares(shares: list[dict[str, Any]]) -> bytes:
         reconstructed_bytes[p] = byte_sum
 
     reconstructed = bytes(reconstructed_bytes)
-    if expected_fp and hashlib.sha256(reconstructed).hexdigest() != expected_fp:
+    if expected_fp and not hmac.compare_digest(hashlib.sha256(reconstructed).hexdigest(), str(expected_fp)):
         raise ValueError("Reconstructed secret failed fingerprint integrity check")
 
     return reconstructed
+
+
+def _is_sha256_hex(val: Any) -> bool:
+    if not isinstance(val, str) or len(val) != 64:
+        return False
+    try:
+        bytes.fromhex(val)
+        return True
+    except ValueError:
+        return False
 
 
 def verify_multi_key_locks(
@@ -189,57 +220,68 @@ def verify_multi_key_locks(
     approved_shares_or_signatures: list[dict[str, Any]],
     threshold_spec: dict[str, Any],
 ) -> bool:
-    """Verify that action payload is authorized under threshold_spec.
+    """Verify that action payload is cryptographically authorized under threshold_spec.
 
-    Supports both PQC multi-signature threshold verification and Shamir share
-    threshold unlocking.
+    Supports PQC WOTS+ Merkle multi-signature threshold verification and GF(256) Shamir share
+    threshold unlocking bound to ``threshold_spec['required_k']``.
     """
     if not approved_shares_or_signatures or not threshold_spec:
         return False
 
-    required_k = threshold_spec.get("required_k", 1)
-    authorized_keys = set(threshold_spec.get("authorized_keys", []))
+    try:
+        required_k = int(threshold_spec.get("required_k", 1))
+    except (TypeError, ValueError):
+        return False
+    if required_k < 1:
+        return False
+
+    authorized_keys = {str(k) for k in (threshold_spec.get("authorized_keys") or []) if str(k)}
     expected_secret_hash = threshold_spec.get("expected_secret_hash")
 
-    # Branch 1: Shamir share threshold unlocking
-    if any("x" in item and "data" in item for item in approved_shares_or_signatures):
+    # Branch 1: Shamir share threshold unlocking (strictly requires threshold_spec required_k and 64-hex fingerprint)
+    shamir_items = [
+        item for item in approved_shares_or_signatures if isinstance(item, dict) and "x" in item and "data" in item
+    ]
+    if shamir_items:
+        if len(shamir_items) < required_k:
+            return False
+        authorized_shamir: list[dict[str, Any]] = []
+        for s in shamir_items:
+            if type(s.get("k")) is not int or s["k"] < required_k or not _is_sha256_hex(s.get("fingerprint")):
+                return False
+            if authorized_keys:
+                kid = str(s.get("key_id") or s.get("x"))
+                if kid not in authorized_keys and str(s.get("x")) not in authorized_keys:
+                    continue
+            authorized_shamir.append(s)
+        if len(authorized_shamir) < required_k:
+            return False
         try:
-            secret = reconstruct_secret_from_shares(approved_shares_or_signatures)
+            secret = reconstruct_secret_from_shares(authorized_shamir, min_k=required_k)
             if expected_secret_hash:
-                return hashlib.sha256(secret).hexdigest() == expected_secret_hash
+                return hmac.compare_digest(hashlib.sha256(secret).hexdigest(), str(expected_secret_hash))
             return True
         except Exception:
             return False
 
-    # Branch 2: PQC signature threshold verification
-    valid_signers = set()
+    # Branch 2: PQC signature threshold verification (fail closed without unauthenticated token fallback)
+    valid_signers: set[str] = set()
     for item in approved_shares_or_signatures:
+        if not isinstance(item, dict):
+            continue
         sig = item.get("signature")
         pub = item.get("public_key")
-        if not sig or not pub:
+        if not isinstance(sig, dict) or not isinstance(pub, dict):
             continue
         pub_root = pub.get("root")
-        if authorized_keys and pub_root not in authorized_keys:
+        if not pub_root:
+            continue
+        if authorized_keys and str(pub_root) not in authorized_keys:
             continue
         if pqc_verify(action_payload, sig, pub):
-            valid_signers.add(pub_root)
+            valid_signers.add(str(pub_root))
 
-    if valid_signers:
-        return len(valid_signers) >= required_k
-
-    # Branch 3: Multi-keyholder authorization tokens
-    valid_keyholders = set()
-    for item in approved_shares_or_signatures:
-        kid = item.get("key_id") or item.get("x")
-        if kid is None:
-            continue
-        if authorized_keys and str(kid) not in authorized_keys:
-            continue
-        # Require non-empty authorization proof
-        if item.get("data") or item.get("sig") or item.get("token") or item.get("secret"):
-            valid_keyholders.add(str(kid))
-
-    return len(valid_keyholders) >= required_k
+    return len(valid_signers) >= required_k
 
 
 # =====================================================================
@@ -260,7 +302,9 @@ def _clamp_scalar(scalar_bytes: bytes) -> int:
 
 
 def _x25519(scalar_bytes: bytes, u_bytes: bytes) -> bytes:
-    """Montgomery ladder scalar multiplication on Curve25519 in pure Python stdlib."""
+    """Constant-time Montgomery ladder scalar multiplication on Curve25519 in pure Python stdlib."""
+    if len(scalar_bytes) != 32 or len(u_bytes) != 32:
+        raise ValueError("X25519 scalar and coordinate inputs must be 32 bytes")
     k = _clamp_scalar(scalar_bytes)
     u = int.from_bytes(u_bytes, "little") % _C25519_P
     x_1, x_2, z_2, x_3, z_3 = u, 1, 0, u, 1
@@ -269,9 +313,13 @@ def _x25519(scalar_bytes: bytes, u_bytes: bytes) -> bytes:
     for t in reversed(range(255)):
         k_t = (k >> t) & 1
         swap ^= k_t
-        if swap:
-            x_2, x_3 = x_3, x_2
-            z_2, z_3 = z_3, z_2
+        mask = -swap
+        dummy_x = mask & (x_2 ^ x_3)
+        x_2 ^= dummy_x
+        x_3 ^= dummy_x
+        dummy_z = mask & (z_2 ^ z_3)
+        z_2 ^= dummy_z
+        z_3 ^= dummy_z
         swap = k_t
 
         a = (x_2 + z_2) % _C25519_P
@@ -288,9 +336,13 @@ def _x25519(scalar_bytes: bytes, u_bytes: bytes) -> bytes:
         x_2 = (aa * bb) % _C25519_P
         z_2 = (e * (aa + _C25519_A24 * e)) % _C25519_P
 
-    if swap:
-        x_2, x_3 = x_3, x_2
-        z_2, z_3 = z_3, z_2
+    mask = -swap
+    dummy_x = mask & (x_2 ^ x_3)
+    x_2 ^= dummy_x
+    x_3 ^= dummy_x
+    dummy_z = mask & (z_2 ^ z_3)
+    z_2 ^= dummy_z
+    z_3 ^= dummy_z
 
     res = (x_2 * pow(z_2, _C25519_P - 2, _C25519_P)) % _C25519_P
     return res.to_bytes(32, "little")
@@ -386,15 +438,18 @@ def generate_pqc_keypair(tree_height: int = 4, seed: bytes | None = None) -> tup
 
 
 def pqc_sign(message: bytes, private_key: dict[str, Any]) -> dict[str, Any]:
-    """Sign message using the next available WOTS+ Merkle tree leaf."""
+    """Sign message using the next available WOTS+ Merkle tree leaf under an exclusive lock."""
     if not isinstance(message, (bytes, bytearray)):
         raise TypeError("Message must be bytes")
 
-    idx = private_key["next_index"]
-    height = private_key["tree_height"]
-    max_leaves = 1 << height
-    if idx >= max_leaves:
-        raise RuntimeError(f"PQC key exhausted: used all {max_leaves} signatures")
+    with _PQC_SIGN_LOCK:
+        idx = private_key["next_index"]
+        height = private_key["tree_height"]
+        max_leaves = 1 << height
+        if idx >= max_leaves:
+            raise RuntimeError(f"PQC key exhausted: used all {max_leaves} signatures")
+        # Reserve the WOTS+ leaf index before computing chains so concurrent callers cannot reuse a one-time leaf.
+        private_key["next_index"] += 1
 
     seed = bytes.fromhex(private_key["seed"])
     sk_chunks, _ = _derive_wots_leaf(seed, idx)
@@ -432,8 +487,6 @@ def pqc_sign(message: bytes, private_key: dict[str, Any]) -> dict[str, Any]:
         curr_level = next_level
         curr_idx >>= 1
 
-    private_key["next_index"] += 1
-
     return {
         "algorithm": "WOTS-Merkle-SHA3",
         "key_index": idx,
@@ -447,18 +500,27 @@ def pqc_verify(message: bytes, signature: dict[str, Any], public_key: dict[str, 
     """Verify a WOTS+ Merkle tree signature on message against public_key."""
     if not isinstance(message, (bytes, bytearray)):
         return False
-    if not signature or not public_key:
+    if not isinstance(signature, dict) or not isinstance(public_key, dict) or not signature or not public_key:
         return False
 
     try:
         if signature.get("merkle_root") != public_key.get("root"):
             return False
 
-        idx = signature["key_index"]
+        tree_height = public_key.get("tree_height")
+        if type(tree_height) is not int or tree_height < 1 or tree_height > 10:
+            return False
+
+        idx = signature.get("key_index")
+        if type(idx) is not int or idx < 0 or idx >= (1 << tree_height):
+            return False
+
         sig_chunks = [bytes.fromhex(c) for c in signature["signature_chunks"]]
         auth_path = [bytes.fromhex(p) for p in signature["auth_path"]]
 
-        if len(sig_chunks) != _WOTS_LEN:
+        if len(sig_chunks) != _WOTS_LEN or any(len(c) != 32 for c in sig_chunks):
+            return False
+        if len(auth_path) != tree_height or any(len(p) != 32 for p in auth_path):
             return False
 
         digest = hashlib.sha3_256(b"PQC_MSG:" + bytes(message)).digest()
@@ -495,8 +557,44 @@ def pqc_verify(message: bytes, signature: dict[str, Any], public_key: dict[str, 
         return False
 
 
+def _ensure_message_bytes(message: bytes | bytearray | str | dict[str, Any]) -> bytes:
+    """Normalize supported message types to canonical UTF-8 bytes for WOTS+ signing."""
+    if isinstance(message, bytes):
+        return message
+    if isinstance(message, bytearray):
+        return bytes(message)
+    if isinstance(message, str):
+        return message.encode("utf-8")
+    if isinstance(message, dict):
+        return json.dumps(message, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    raise TypeError(f"Unsupported message type for PQC signature: {type(message).__name__}")
+
+
+def sign_pqc_message(
+    message: bytes | bytearray | str | dict[str, Any],
+    private_key: dict[str, Any],
+) -> dict[str, Any]:
+    """Sign bytes, str, or dict payload using WOTS+ Merkle tree private key."""
+    return pqc_sign(_ensure_message_bytes(message), private_key)
+
+
+def verify_pqc_signature(
+    message: bytes | bytearray | str | dict[str, Any],
+    signature: dict[str, Any],
+    public_key: dict[str, Any],
+) -> bool:
+    """Verify WOTS+ Merkle tree signature against bytes, str, or dict payload."""
+    if not isinstance(signature, dict) or not isinstance(public_key, dict):
+        return False
+    try:
+        msg_bytes = _ensure_message_bytes(message)
+    except TypeError:
+        return False
+    return pqc_verify(msg_bytes, signature, public_key)
+
+
 # =====================================================================
-# 4. Hybrid Post-Quantum Key Encapsulation & Authenticated Envelope
+# 4. Classical X25519 + SHAKE-256 Authenticated Envelope (Optional WOTS+ Auth)
 # =====================================================================
 
 def pqc_seal(
@@ -504,26 +602,34 @@ def pqc_seal(
     recipient_pubkey: dict[str, Any],
     sender_privkey: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Seal plaintext into a hybrid post-quantum authenticated encryption envelope."""
+    """Seal plaintext using classical X25519 ECDH + SHAKE-256 + HMAC-SHA3-512 AEAD.
+
+    Confidentiality relies on classical Curve25519 ECDH (not ML-KEM / lattice KEM);
+    optional ``sender_privkey`` attaches a WOTS+ Merkle signature over AAD, ciphertext, and tag.
+    """
     if not isinstance(plaintext, (bytes, bytearray)):
         raise TypeError("Plaintext must be bytes")
     if "enc_key" not in recipient_pubkey or "root" not in recipient_pubkey:
         raise ValueError("Invalid recipient public key: missing enc_key or root")
 
     recipient_enc_key = bytes.fromhex(recipient_pubkey["enc_key"])
+    if len(recipient_enc_key) != 32:
+        raise ValueError("Recipient enc_key must be 32 bytes for X25519")
     recipient_root = bytes.fromhex(recipient_pubkey["root"])
 
     # Ephemeral X25519 keypair
     e_priv = secrets.token_bytes(32)
     e_pub = _x25519(e_priv, _C25519_BASE)
 
-    # Shared secret point
+    # Shared secret point (reject low-order points yielding all-zero ECDH secret)
     shared_point = _x25519(e_priv, recipient_enc_key)
+    if shared_point == b"\x00" * 32:
+        raise ValueError("Invalid low-order X25519 key exchange point")
 
     nonce = secrets.token_bytes(16)
     pq_salt = secrets.token_bytes(32)
 
-    # Hybrid KDF via SHAKE-256
+    # Key derivation via SHAKE-256
     kdf_input = b"OPSCRYER_PQ_HYBRID_KDF_V1:" + shared_point + pq_salt + recipient_root + nonce
     key_material = hashlib.shake_256(kdf_input).digest(96)
     enc_key = key_material[:32]
@@ -535,6 +641,7 @@ def pqc_seal(
 
     header = {
         "alg": "PQC-HYBRID-X25519-SHAKE256-SHA3_512",
+        "kem_quantum_resistant": False,
         "ephemeral_pubkey": e_pub.hex(),
         "nonce": nonce.hex(),
         "pq_salt": pq_salt.hex(),
@@ -562,7 +669,7 @@ def pqc_unseal(
     recipient_privkey: dict[str, Any],
     sender_pubkey: dict[str, Any] | None = None,
 ) -> bytes:
-    """Unseal plaintext from a hybrid post-quantum authenticated envelope."""
+    """Unseal plaintext from an authenticated X25519 + SHAKE-256 + HMAC-SHA3-512 envelope."""
     if not envelope or not recipient_privkey:
         raise ValueError("Invalid envelope or private key")
 
@@ -582,11 +689,15 @@ def pqc_unseal(
 
     recipient_enc_priv = bytes.fromhex(recipient_privkey["enc_key"])
     e_pub = bytes.fromhex(header["ephemeral_pubkey"])
+    if len(recipient_enc_priv) != 32 or len(e_pub) != 32:
+        raise ValueError("X25519 keys must be 32 bytes")
     nonce = bytes.fromhex(header["nonce"])
     pq_salt = bytes.fromhex(header["pq_salt"])
     recipient_root = bytes.fromhex(header["recipient_root"])
 
     shared_point = _x25519(recipient_enc_priv, e_pub)
+    if shared_point == b"\x00" * 32:
+        raise ValueError("Invalid low-order X25519 key exchange point")
     kdf_input = b"OPSCRYER_PQ_HYBRID_KDF_V1:" + shared_point + pq_salt + recipient_root + nonce
     key_material = hashlib.shake_256(kdf_input).digest(96)
     enc_key = key_material[:32]
