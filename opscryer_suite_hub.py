@@ -28,9 +28,10 @@ def _validate_bundle_destination(output_dir, filenames):
             raise ValueError
         # Windows device names, alternate data streams, and trailing dots/spaces
         # can alias a different filesystem object than the caller requested.
+        is_reserved = getattr(os.path, "isreserved", None)
         for part in path.parts[1:]:
             if (":" in part or part.endswith((".", " "))
-                    or Path(part).is_reserved()):
+                    or (is_reserved(part) if is_reserved else (os.name == "nt" and Path(part).is_reserved()))):
                 raise ValueError
         for candidate in (*reversed(path.parents), path,
                           *(path / name for name in filenames)):

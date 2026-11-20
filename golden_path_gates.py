@@ -144,24 +144,36 @@ def _manifest_epics(root):
     return epics
 
 
+_IPV4_RE = re.compile(rb"(?<![\d.])(?:\d{1,3}\.){3}\d{1,3}(?!\d|\.\d)")
+_MAC_COLON_RE = re.compile(
+    rb"(?<![\w:-])[0-9a-f]{2}([:-])(?:[0-9a-f]{2}\1){4}[0-9a-f]{2}(?![\w:-])",
+    re.IGNORECASE,
+)
+_MAC_CISCO_RE = re.compile(
+    rb"(?<![\w.])(?:[0-9a-f]{4}\.){2}[0-9a-f]{4}(?!\w|\.[0-9a-f])",
+    re.IGNORECASE,
+)
+_TOKEN_PREFIXES = (b"gh" + b"o_", b"gh" + b"p_", b"gl" + b"pat-", b"s" + b"k-")
+_TOKEN_RE = re.compile(
+    rb"(?<![A-Za-z0-9_])(?:" + b"|".join(_TOKEN_PREFIXES) + rb")[A-Za-z0-9_-]+"
+)
+
+
 def _opsec_count(content):
     count = 0
-    for match in re.finditer(rb"(?<![\d.])(?:\d{1,3}\.){3}\d{1,3}(?!\d|\.\d)", content):
+    for match in _IPV4_RE.finditer(content):
+        raw_ip = match[0]
+        if raw_ip in (b"127.0.0.1", b"203.0.113.1", b"0.0.0.0"):
+            continue
         try:
-            address = IPv4Address(match[0].decode("ascii"))
+            address = IPv4Address(raw_ip.decode("ascii"))
         except ValueError:
             continue
-        count += (address.is_global and not address.is_multicast
-                  and str(address) != "203.0.113.1")
-    patterns = [
-        rb"(?<![\w:-])[0-9a-f]{2}([:-])(?:[0-9a-f]{2}\1){4}[0-9a-f]{2}(?![\w:-])",
-        rb"(?<![\w.])(?:[0-9a-f]{4}\.){2}[0-9a-f]{4}(?!\w|\.[0-9a-f])",
-    ]
-    count += sum(len(re.findall(pattern, content, re.IGNORECASE)) for pattern in patterns)
-    prefixes = [b"gh" + b"o_", b"gh" + b"p_", b"gl" + b"pat-", b"s" + b"k-"]
+        count += address.is_global and not address.is_multicast
+    count += sum(1 for _ in _MAC_COLON_RE.finditer(content))
+    count += sum(1 for _ in _MAC_CISCO_RE.finditer(content))
     # Match token starts, not suffixes of words such as HTML risk-register IDs.
-    count += len(re.findall(rb"(?<![A-Za-z0-9_])(?:" + b"|".join(prefixes)
-                            + rb")[A-Za-z0-9_-]+", content))
+    count += sum(1 for _ in _TOKEN_RE.finditer(content))
     return count
 
 
@@ -199,27 +211,34 @@ def run_six_gate_prepush_audit(root_dir=None):
                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         return result.stdout
 
+    tracked_bytes = {}
+    is_repo_root = False
     try:
         # --show-prefix avoids comparing native paths with POSIX paths returned
         # by Git wrappers on Windows, while still rejecting nested directories.
-        if (git("rev-parse", "--is-inside-work-tree").strip() != b"true"
-                or git("rev-parse", "--show-prefix").strip()):
+        rev_lines = git("rev-parse", "--is-inside-work-tree", "--show-prefix").splitlines()
+        if len(rev_lines) < 1 or rev_lines[0].strip() != b"true" or (len(rev_lines) > 1 and rev_lines[1].strip()):
             raise ValueError("not repository root")
+        is_repo_root = True
         paths = git("ls-files", "-z").split(b"\0")
         for name in filter(None, paths):
             path = root / os.fsdecode(name)
             if path.is_symlink() or not path.resolve().is_relative_to(root):
                 raise OSError("unsafe tracked path")
-            gates["crlf"]["violations"] += b"\r\n" in path.read_bytes()
+            raw = path.read_bytes()
+            tracked_bytes[path] = raw
+            gates["crlf"]["violations"] += b"\r\n" in raw
     except (OSError, ValueError, subprocess.SubprocessError):
         gates["crlf"]["errors"] += 1
 
     try:
-        if (git("rev-parse", "--is-inside-work-tree").strip() != b"true"
-                or git("rev-parse", "--show-prefix").strip()):
-            raise ValueError("not repository root")
-        subject = git("log", "-1", "--format=%s").decode("utf-8").removesuffix("\n")
-        parents = git("log", "-1", "--format=%P").decode("utf-8").strip().split()
+        if not is_repo_root:
+            rev_lines = git("rev-parse", "--is-inside-work-tree", "--show-prefix").splitlines()
+            if len(rev_lines) < 1 or rev_lines[0].strip() != b"true" or (len(rev_lines) > 1 and rev_lines[1].strip()):
+                raise ValueError("not repository root")
+        head_info = git("log", "-1", "--format=%P%n%s").decode("utf-8").removesuffix("\n")
+        parents_line, _, subject = head_info.partition("\n")
+        parents = parents_line.strip().split()
         # Permit genuine multi-parent GitLab merge commits on default branches while keeping single-parent commits strict.
         if len(parents) >= 2 and subject.startswith("Merge branch "):
             gates["commit_subject"]["violations"] = 0
@@ -230,7 +249,9 @@ def run_six_gate_prepush_audit(root_dir=None):
 
     try:
         for path in _public_files(root):
-            content = path.read_bytes()
+            content = tracked_bytes.get(path)
+            if content is None:
+                content = path.read_bytes()
             relative = path.relative_to(root).as_posix().encode("utf-8")
             gates["opsec"]["violations"] += _opsec_count(relative + b"\n" + content)
             if path.name == ".env" or (path.name.startswith(".env.") and path.name != ".env.example"):

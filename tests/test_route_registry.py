@@ -71,12 +71,12 @@ class RouteRegistryTests(unittest.TestCase):
     def test_summary_counts_and_independence(self):
         summary = build_route_registry_summary()
         self.assertEqual(summary["total_html_routes"], 21)
-        self.assertEqual(summary["total_api_routes"], 63)
+        self.assertEqual(summary["total_api_routes"], 65)
         self.assertEqual(summary["by_subsystem"], {
             "core": {"html_routes": 0, "api_routes": 12},
             "live": {"html_routes": 1, "api_routes": 9},
             "security": {"html_routes": 0, "api_routes": 21},
-            "portals": {"html_routes": 20, "api_routes": 21},
+            "portals": {"html_routes": 20, "api_routes": 23},
         })
         json.dumps(summary)
         summary["by_subsystem"]["core"]["api_routes"] = -1

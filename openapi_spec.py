@@ -13,7 +13,9 @@ import json
 # Query names mirror the public browser handler; all operations are GET.
 _ROUTES = {
     "scale-benchmark": ("Synthetic graph scalability benchmark", ("nodes",)),
-    "graph/catalog": ("Spatial graph catalog", ("live",)),
+    "graph/catalog": ("Spatial graph catalog", ("live", "scope")),
+    "brain/scopes": ("Available Central Brain Knowledge Graph scopes", ()),
+    "brain/status": ("Upstream Central Brain API connection status", ()),
     "two-act-status": ("Two-act browser status", ("act",)),
     "dogfood-zoom": ("Progressive graph zoom", ("node_id", "zoom_level")),
     "oscal-summary": ("Unassessed OSCAL posture summary", ()),
@@ -82,6 +84,8 @@ _PARAMETERS = {
               "Synthetic node count; omit to benchmark 100, 500, and 1500 nodes."),
     "live": ({"type": "string", "enum": ["0", "1"], "default": "0"},
               "Use 1 to poll live cluster metrics via kubectl; 0 uses offline data."),
+    "scope": ({"type": "string", "pattern": "^[a-zA-Z0-9_.-]{1,64}$"},
+               "Optional Central Brain Knowledge Graph scope identifier when OPSCRYER_BRAIN_API_URL is configured."),
     "act": ({"type": "integer", "enum": [1, 2], "default": 1}, "Browser act."),
     "node_id": ({"type": "string", "default": "root-company"}, "Dogfood graph node ID."),
     "zoom_level": ({"type": "integer", "minimum": 0, "maximum": 4, "default": 0},

@@ -82,8 +82,14 @@ API_V1_ROUTES = {
         "allowed_params": {"adapter"}, "module": "environment_adapters", "subsystem": "portals",
         "description": "Environment adapter compatibility catalog."},
     "/api/v1/graph/catalog": {
-        "allowed_params": {"live"}, "module": "cluster_diff_engine", "subsystem": "live",
-        "description": "Snapshot graph with enriched currencies and optional live metrics."},
+        "allowed_params": {"live", "scope"}, "module": "cluster_diff_engine", "subsystem": "live",
+        "description": "Snapshot or live-proxied Central Brain spatial graph catalog with optional scope and live metrics."},
+    "/api/v1/brain/scopes": {
+        "allowed_params": set(), "module": "opscryer_browser", "subsystem": "portals",
+        "description": "Available Central Brain Knowledge Graph scopes when OPSCRYER_BRAIN_API_URL is configured."},
+    "/api/v1/brain/status": {
+        "allowed_params": set(), "module": "opscryer_browser", "subsystem": "portals",
+        "description": "Upstream Central Brain API health and connection status."},
     "/api/v1/live-metrics": {
         "allowed_params": {"live"}, "module": "live_metrics_poller", "subsystem": "live",
         "description": "Offline metrics or explicitly requested live collection."},

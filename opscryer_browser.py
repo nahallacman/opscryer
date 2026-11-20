@@ -40,6 +40,9 @@ import sys
 import threading
 import time
 from typing import Any
+import urllib.error
+import urllib.parse
+import urllib.request
 from urllib.parse import parse_qs, urlsplit
 import unicodedata
 
@@ -664,6 +667,25 @@ def build_standalone_mock_dataset() -> dict[str, Any]:
 
 
 get_standalone_mock_dataset = build_standalone_mock_dataset
+
+
+def _get_brain_api_url() -> str:
+    """Dynamically read and validate OPSCRYER_BRAIN_API_URL allowing http or https."""
+    raw = os.environ.get("OPSCRYER_BRAIN_API_URL", "").strip().rstrip("/")
+    if not raw:
+        return ""
+    parsed = urlsplit(raw)
+    if parsed.scheme.lower() in {"http", "https"} and parsed.netloc:
+        return raw
+    return ""
+
+
+def _get_brain_proxy_timeout() -> float:
+    """Configurable upstream timeout for Brain Live API proxy calls (default 15s)."""
+    try:
+        return max(1.0, min(float(os.environ.get("OPSCRYER_BRAIN_TIMEOUT", "15.0") or 15.0), 60.0))
+    except Exception:
+        return 15.0
 
 
 def build_standalone_demo_jev_tree() -> dict[str, Any]:
@@ -1880,6 +1902,10 @@ def render_standalone_browser_html(default_api_base: str = "", dataset: dict[str
         <option value="REMOTE_BACKEND_API">🔌 Full Live Cluster Graph</option>
         <option value="CUSTOM_JSON_PACK">📄 Custom JSON Pack</option>
       </select>
+      <select id="brain-scope-select" aria-label="Knowledge Graph Scope" style="display:none;"></select>
+      <button id="brain-sync-btn" type="button" style="display:none;">🔄 Sync Live</button>
+      <button id="brain-pulse-btn" type="button" style="display:none;">⚡ Live Event</button>
+      <button id="brain-reset-btn" type="button" style="display:none;">↺ Reset</button>
       <input id="backend-api-input" type="text" placeholder="Backend URL..." style="width:115px;" />
       <input id="browser-filter-input" type="text" placeholder="Filter boxes (/)" oninput="runNodeFilter()" style="width:120px;" />
       <button id="filter-runbooks-btn" type="button" onclick="filterRunbooksOnly()" style="border-color:var(--cyan);color:var(--cyan);">📘 Runbooks</button>
@@ -2133,6 +2159,7 @@ def render_standalone_browser_html(default_api_base: str = "", dataset: dict[str
     const SpatialGraphAdapter = {
       mode: 'STANDALONE_MOCK',
       apiBase: DEFAULT_API_BASE || '',
+      currentScope: '',
       catalog: STANDALONE_DEMO_DATASET,
       nodeMap: new Map(),
       inboundMap: new Map(),
@@ -2219,9 +2246,13 @@ def render_standalone_browser_html(default_api_base: str = "", dataset: dict[str
         } else if (params.get('mode') === 'remote') {
           this.mode = 'REMOTE_BACKEND_API';
         }
+        if (params.get('scope')) {
+          this.currentScope = params.get('scope');
+        }
         $('backend-api-input').value = this.apiBase;
         $('adapter-select').value = this.mode;
         bindUnifiedNavigationDock();
+        await initBrainControls();
         if (window.location && window.location.hostname && params.get('mode') !== 'mock' && !params.get('api')) {
           await loadUnifiedClusterAndSubsystemGraph();
           return;
@@ -2301,11 +2332,16 @@ def render_standalone_browser_html(default_api_base: str = "", dataset: dict[str
           return;
         }
         try {
-          const res = await fetch((this.apiBase || '') + '/api/v1/graph/catalog', {cache: 'no-store'});
+          const scopeParam = this.currentScope ? ('?scope=' + encodeURIComponent(this.currentScope)) : '';
+          const res = await fetch((this.apiBase || '') + '/api/v1/graph/catalog' + scopeParam, {cache: 'no-store'});
           const data = await res.json();
           if (data && Array.isArray(data.nodes)) {
             this.catalog = data;
-            badge.textContent = 'REMOTE_BACKEND_API';
+            if (this.catalog && this.catalog.ai_invoked === false) {
+              badge.textContent = '🧠 LIVE BRAIN KG (ZERO-AI) • ' + (this.catalog.scope_id || this.currentScope || 'default') + ' • ' + String(this.catalog.ecosystem_revision || '').slice(0, 14);
+            } else {
+              badge.textContent = 'REMOTE_BACKEND_API';
+            }
           }
         } catch (err) {
           this.catalog = STANDALONE_DEMO_DATASET;
@@ -2414,6 +2450,7 @@ def render_standalone_browser_html(default_api_base: str = "", dataset: dict[str
 
       entryNodeId() {
         const nodes = (this.catalog && this.catalog.nodes) || [];
+        if (this.catalog && this.catalog.root_node_id && nodes.some(n => n.id === this.catalog.root_node_id)) return this.catalog.root_node_id;
         if (nodes.some(n => n.id === 'root-company')) return 'root-company';
         const childIds = new Set(nodes.flatMap(n => n.drilldown_children || []));
         return (nodes.find(n => !childIds.has(n.id)) || nodes[0] || {id: 'root-company'}).id;
@@ -2901,7 +2938,8 @@ def render_standalone_browser_html(default_api_base: str = "", dataset: dict[str
         if (ecosystemPollBusy || SpatialGraphAdapter.mode !== 'REMOTE_BACKEND_API') return;
         ecosystemPollBusy = true;
         try {
-          const res = await fetch((SpatialGraphAdapter.apiBase || '') + '/api/v1/graph/catalog', {cache: 'no-store'});
+          const scopeParam = SpatialGraphAdapter.currentScope ? ('?scope=' + encodeURIComponent(SpatialGraphAdapter.currentScope)) : '';
+          const res = await fetch((SpatialGraphAdapter.apiBase || '') + '/api/v1/graph/catalog' + scopeParam, {cache: 'no-store'});
           const data = await res.json();
           const nextRev = data && data.ecosystem_revision ? String(data.ecosystem_revision) : '';
           if (nextRev && nextRev !== lastSeenEcosystemRevision) {
@@ -2913,6 +2951,82 @@ def render_standalone_browser_html(default_api_base: str = "", dataset: dict[str
           ecosystemPollBusy = false;
         }
       }, 3000);
+    }
+
+    async function initBrainControls() {
+      try {
+        const res = await fetch((SpatialGraphAdapter.apiBase || '') + '/api/v1/brain/scopes', {cache: 'no-store'});
+        if (!res.ok) return;
+        const data = await res.json();
+        const scopes = (data && data.scopes) || [];
+        if (Array.isArray(scopes) && scopes.length > 0) {
+          const scopeSel = $('brain-scope-select');
+          if (scopeSel) {
+            scopeSel.innerHTML = '';
+            scopes.forEach(s => {
+              const opt = document.createElement('option');
+              const sid = typeof s === 'string' ? s : (s.id || s.scope_id || '');
+              const slabel = typeof s === 'string' ? s : (s.label || s.name || sid);
+              opt.value = sid;
+              opt.textContent = '🧠 ' + slabel;
+              scopeSel.appendChild(opt);
+            });
+            if (SpatialGraphAdapter.currentScope && scopes.some(s => (typeof s === 'string' ? s : (s.id || s.scope_id)) === SpatialGraphAdapter.currentScope)) {
+              scopeSel.value = SpatialGraphAdapter.currentScope;
+            } else {
+              scopeSel.value = typeof scopes[0] === 'string' ? scopes[0] : (scopes[0].id || scopes[0].scope_id);
+              SpatialGraphAdapter.currentScope = scopeSel.value;
+            }
+            scopeSel.style.display = 'inline-block';
+            scopeSel.onchange = async () => {
+              SpatialGraphAdapter.currentScope = scopeSel.value;
+              await loadUnifiedClusterAndSubsystemGraph(false);
+            };
+          }
+          const syncBtn = $('brain-sync-btn');
+          if (syncBtn) {
+            syncBtn.style.display = 'inline-block';
+            syncBtn.onclick = async () => {
+              try {
+                await fetch((SpatialGraphAdapter.apiBase || '') + '/api/v1/brain/refresh', {
+                  method: 'POST',
+                  headers: {'Content-Type': 'application/json'},
+                  body: '{}'
+                });
+              } catch (_e) {}
+              await loadUnifiedClusterAndSubsystemGraph(true);
+            };
+          }
+          const pulseBtn = $('brain-pulse-btn');
+          if (pulseBtn) {
+            pulseBtn.style.display = 'inline-block';
+            pulseBtn.onclick = async () => {
+              try {
+                await fetch((SpatialGraphAdapter.apiBase || '') + '/api/v1/brain/dynamic-event', {
+                  method: 'POST',
+                  headers: {'Content-Type': 'application/json'},
+                  body: '{}'
+                });
+              } catch (_e) {}
+              await loadUnifiedClusterAndSubsystemGraph(true);
+            };
+          }
+          const resetBtn = $('brain-reset-btn');
+          if (resetBtn) {
+            resetBtn.style.display = 'inline-block';
+            resetBtn.onclick = async () => {
+              try {
+                await fetch((SpatialGraphAdapter.apiBase || '') + '/api/v1/brain/dynamic-event', {
+                  method: 'POST',
+                  headers: {'Content-Type': 'application/json'},
+                  body: JSON.stringify({kind: 'reset'})
+                });
+              } catch (_e) {}
+              await loadUnifiedClusterAndSubsystemGraph(true);
+            };
+          }
+        }
+      } catch (_err) {}
     }
 
     async function loadUnifiedClusterAndSubsystemGraph(preserveFocus) {
@@ -3064,7 +3178,8 @@ def render_standalone_browser_html(default_api_base: str = "", dataset: dict[str
       baseNodes.forEach(n => {
         n.drilldown_children = (n.drilldown_children || []).filter((cid, idx, arr) => cid !== n.id && byId.has(cid) && arr.indexOf(cid) === idx);
       });
-      const rootNode = baseNodes.find(n => n.id === 'cluster-home') || baseNodes.find(n => n.id === 'root-company') || baseNodes[0];
+      const explicitRootId = SpatialGraphAdapter.catalog && SpatialGraphAdapter.catalog.root_node_id ? String(SpatialGraphAdapter.catalog.root_node_id) : '';
+      const rootNode = (explicitRootId && byId.get(explicitRootId)) || baseNodes.find(n => n.id === 'cluster-home') || baseNodes.find(n => n.id === 'root-company') || baseNodes[0];
       if (rootNode) {
         if (!rootNode.drilldown_children.includes('swarm-nanomachine-fleet')) {
           rootNode.drilldown_children.unshift('swarm-nanomachine-fleet');
@@ -3111,7 +3226,7 @@ def render_standalone_browser_html(default_api_base: str = "", dataset: dict[str
       } else {
         SpatialGraphAdapter.historyStack = [];
         SpatialGraphAdapter.currentId = null;
-        const entryId = byId.has('cluster-home') ? 'cluster-home' : SpatialGraphAdapter.entryNodeId();
+        const entryId = (explicitRootId && byId.has(explicitRootId)) ? explicitRootId : (byId.has('cluster-home') ? 'cluster-home' : SpatialGraphAdapter.entryNodeId());
         await SpatialGraphAdapter.selectNode(entryId, true);
       }
       startEcosystemOverlayPoller();
@@ -3151,7 +3266,8 @@ def render_standalone_browser_html(default_api_base: str = "", dataset: dict[str
           existingIds.add(sn.id);
         }
       });
-      const rootNode = baseNodes.find(n => n.id === 'cluster-home') || baseNodes.find(n => n.id === 'root-company') || baseNodes[0];
+      const explicitRootId = SpatialGraphAdapter.catalog && SpatialGraphAdapter.catalog.root_node_id ? String(SpatialGraphAdapter.catalog.root_node_id) : '';
+      const rootNode = (explicitRootId && byId.get(explicitRootId)) || baseNodes.find(n => n.id === 'cluster-home') || baseNodes.find(n => n.id === 'root-company') || baseNodes[0];
       if (rootNode && !rootNode.drilldown_children.includes('swarm-nanomachine-fleet')) {
         rootNode.drilldown_children.unshift('swarm-nanomachine-fleet');
       }
@@ -3897,6 +4013,39 @@ def _build_frontend_handler(default_api_base: str = "",
                     "config_loaded": True,
                 }
 
+            brain_url = _get_brain_api_url()
+            if brain_url:
+                try:
+                    req = urllib.request.Request(
+                        f"{brain_url}/healthz",
+                        headers={"User-Agent": "OpsCryer-Browser/2.0"},
+                    )
+                    with urllib.request.urlopen(req, timeout=2.5) as resp:
+                        if resp.status == 200:
+                            return 200, {
+                                "status": "ready",
+                                "graph_loaded": True,
+                                "brain_api_connected": True,
+                                "ai_invoked": False,
+                                "airlock_ready": True,
+                                "config_loaded": True,
+                            }
+                        return 503, {
+                            "status": "not_ready",
+                            "reason": f"Brain API health probe returned status {resp.status}",
+                            "graph_loaded": False,
+                            "brain_api_connected": False,
+                            "ai_invoked": False,
+                        }
+                except Exception as exc:
+                    return 503, {
+                        "status": "not_ready",
+                        "reason": f"Brain API health probe failed: {exc}",
+                        "graph_loaded": False,
+                        "brain_api_connected": False,
+                        "ai_invoked": False,
+                    }
+
             failure_reasons: list[str] = []
 
             # 1. Graph engine check
@@ -4242,7 +4391,9 @@ def _build_frontend_handler(default_api_base: str = "",
                     "/api/v1/scale-benchmark": {"nodes"},
                     "/api/v1/openapi.json": set(),
                     "/api/v1/environment-adapters": {"adapter"},
-                    "/api/v1/graph/catalog": {"live"},
+                    "/api/v1/graph/catalog": {"live", "scope"},
+                    "/api/v1/brain/scopes": set(),
+                    "/api/v1/brain/status": set(),
                     "/api/v1/live-metrics": {"live"},
                     "/api/v1/two-act-status": {"act"},
                     "/api/v1/dogfood-zoom": {"node_id", "zoom_level"},
@@ -4319,6 +4470,10 @@ def _build_frontend_handler(default_api_base: str = "",
                 if (url.path in {"/api/v1/graph/catalog", "/api/v1/live-metrics"}
                         and query.get("live", ["0"])[0] not in {"0", "1"}):
                     raise ValueError("Invalid query parameters")
+                if url.path == "/api/v1/graph/catalog" and "scope" in query:
+                    scope_val = query["scope"][0]
+                    if not re.match(r"^[a-zA-Z0-9_.-]{1,64}$", scope_val):
+                        raise ValueError("Invalid query parameters")
                 if url.path == "/api/v1/scale-benchmark":
                     from scale_benchmark import _parse_scale_nodes, run_scalability_benchmark_suite
 
@@ -4329,7 +4484,78 @@ def _build_frontend_handler(default_api_base: str = "",
                     from openapi_spec import build_openapi_v3_spec
 
                     payload = build_openapi_v3_spec()
+                elif url.path == "/api/v1/brain/scopes":
+                    brain_url = _get_brain_api_url()
+                    if not brain_url:
+                        self._send_json(200, {"enabled": False, "scopes": []})
+                        return
+                    try:
+                        req = urllib.request.Request(
+                            f"{brain_url}/api/v1/scopes",
+                            headers={"User-Agent": "OpsCryer-Browser/2.0"},
+                        )
+                        with urllib.request.urlopen(req, timeout=_get_brain_proxy_timeout()) as resp:
+                            data = json.loads(resp.read().decode("utf-8"))
+                            self._send_json(resp.status, data)
+                    except urllib.error.HTTPError as err:
+                        try:
+                            err_body = json.loads(err.read().decode("utf-8"))
+                        except Exception:
+                            err_body = {"error": str(err)}
+                        self._send_json(err.code, err_body)
+                    except Exception as exc:
+                        self._send_json(503, {"error": f"Brain API unreachable: {exc}", "enabled": True, "scopes": []})
+                    return
+                elif url.path == "/api/v1/brain/status":
+                    brain_url = _get_brain_api_url()
+                    if not brain_url:
+                        self._send_json(200, {"enabled": False})
+                        return
+                    try:
+                        req = urllib.request.Request(
+                            f"{brain_url}/healthz",
+                            headers={"User-Agent": "OpsCryer-Browser/2.0"},
+                        )
+                        with urllib.request.urlopen(req, timeout=_get_brain_proxy_timeout()) as resp:
+                            health_json = json.loads(resp.read().decode("utf-8"))
+                            self._send_json(200, {"enabled": True, "brain_api_url": brain_url, **health_json})
+                    except urllib.error.HTTPError as err:
+                        try:
+                            err_body = json.loads(err.read().decode("utf-8"))
+                        except Exception:
+                            err_body = {"error": str(err)}
+                        self._send_json(err.code, {"enabled": True, "brain_api_url": brain_url, **err_body})
+                    except Exception as exc:
+                        self._send_json(503, {"enabled": True, "brain_api_url": brain_url, "status": "unreachable", "error": str(exc)})
+                    return
                 elif url.path == "/api/v1/graph/catalog":
+                    brain_url = _get_brain_api_url()
+                    if brain_url:
+                        scope = query.get("scope", [""])[0]
+                        live = query.get("live", ["0"])[0]
+                        qs_parts = [f"live={urllib.parse.quote(live)}"]
+                        if scope:
+                            qs_parts.insert(0, f"scope={urllib.parse.quote(scope)}")
+                        target_url = f"{brain_url}/api/v1/opscryer/graph?{'&'.join(qs_parts)}"
+                        try:
+                            req = urllib.request.Request(
+                                target_url,
+                                headers={"User-Agent": "OpsCryer-Browser/2.0"},
+                            )
+                            with urllib.request.urlopen(req, timeout=_get_brain_proxy_timeout()) as resp:
+                                payload = json.loads(resp.read().decode("utf-8"))
+                                self._send_json(resp.status, payload)
+                                return
+                        except urllib.error.HTTPError as err:
+                            try:
+                                err_body = json.loads(err.read().decode("utf-8"))
+                            except Exception:
+                                err_body = {"error": str(err)}
+                            self._send_json(err.code, err_body)
+                            return
+                        except Exception as exc:
+                            self._send_json(503, {"error": f"Brain API unreachable: {exc}"})
+                            return
                     from cluster_diff_engine import DEFAULT_CATALOG_PATH
                     from cluster_harvester import build_live_cluster_spatial_catalog
                     from live_currencies import build_enriched_live_currencies
@@ -4783,6 +5009,8 @@ def _build_frontend_handler(default_api_base: str = "",
                     self._send_json(405, {"error": "method not allowed", "allowed_method": "GET"})
                     return
                 supported_post_routes = {
+                    "/api/v1/brain/refresh",
+                    "/api/v1/brain/dynamic-event",
                     "/api/v1/graph/deflect-ticket",
                     "/api/v1/actions/dry-run",
                     "/api/v1/actions/stage",
@@ -4819,32 +5047,94 @@ def _build_frontend_handler(default_api_base: str = "",
                     return
 
                 content_length_header = self.headers.get("Content-Length")
-                if not content_length_header:
-                    self._send_json(400, {"error": "Missing Content-Length header"})
-                    return
+                if not content_length_header and url.path == "/api/v1/brain/refresh":
+                    content_length = 0
+                    raw_body = b"{}"
+                    body = {}
+                else:
+                    if not content_length_header:
+                        self._send_json(400, {"error": "Missing Content-Length header"})
+                        return
 
-                try:
-                    content_length = int(content_length_header)
-                    if content_length < 0 or content_length > 1_048_576:
+                    try:
+                        content_length = int(content_length_header)
+                        if content_length < 0 or content_length > 1_048_576:
+                            self._send_json(400, {"error": "Invalid Content-Length header"})
+                            return
+                    except ValueError:
                         self._send_json(400, {"error": "Invalid Content-Length header"})
                         return
-                except ValueError:
-                    self._send_json(400, {"error": "Invalid Content-Length header"})
+
+                    raw_body = self.rfile.read(content_length)
+                    if len(raw_body) != content_length:
+                        self._send_json(400, {"error": "Incomplete request body"})
+                        return
+
+                    if content_length == 0 and url.path == "/api/v1/brain/refresh":
+                        body = {}
+                    else:
+                        try:
+                            body = json.loads(raw_body.decode("utf-8"))
+                        except Exception:
+                            self._send_json(400, {"error": "Invalid JSON body"})
+                            return
+
+                    if not isinstance(body, dict):
+                        self._send_json(400, {"error": "Request body must be a JSON object"})
+                        return
+
+                if url.path == "/api/v1/brain/refresh":
+                    brain_url = _get_brain_api_url()
+                    if not brain_url:
+                        self._send_json(503, {"error": "OPSCRYER_BRAIN_API_URL not configured", "status": "unavailable"})
+                        return
+                    try:
+                        req = urllib.request.Request(
+                            f"{brain_url}/api/v1/telemetry/refresh",
+                            data=b"{}",
+                            headers={"Content-Type": "application/json", "User-Agent": "OpsCryer-Browser/2.0"},
+                            method="POST",
+                        )
+                        with urllib.request.urlopen(req, timeout=_get_brain_proxy_timeout()) as resp:
+                            res_payload = json.loads(resp.read().decode("utf-8"))
+                            self._send_json(resp.status, res_payload)
+                    except urllib.error.HTTPError as err:
+                        try:
+                            err_body = json.loads(err.read().decode("utf-8"))
+                        except Exception:
+                            err_body = {"error": str(err)}
+                        self._send_json(err.code, err_body)
+                    except Exception as exc:
+                        self._send_json(503, {"error": f"Brain API unreachable: {exc}", "status": "unavailable"})
                     return
 
-                raw_body = self.rfile.read(content_length)
-                if len(raw_body) != content_length:
-                    self._send_json(400, {"error": "Incomplete request body"})
-                    return
-
-                try:
-                    body = json.loads(raw_body.decode("utf-8"))
-                except Exception:
-                    self._send_json(400, {"error": "Invalid JSON body"})
-                    return
-
-                if not isinstance(body, dict):
-                    self._send_json(400, {"error": "Request body must be a JSON object"})
+                if url.path == "/api/v1/brain/dynamic-event":
+                    brain_url = _get_brain_api_url()
+                    if not brain_url:
+                        self._send_json(503, {"error": "OPSCRYER_BRAIN_API_URL not configured", "status": "unavailable"})
+                        return
+                    if content_length > 16384:
+                        self._send_json(400, {"error": "Request body exceeds 16 KiB limit"})
+                        return
+                    try:
+                        req_bytes = json.dumps(body).encode("utf-8")
+                        req = urllib.request.Request(
+                            f"{brain_url}/api/v1/graph/dynamic-event",
+                            data=req_bytes,
+                            headers={"Content-Type": "application/json", "User-Agent": "OpsCryer-Browser/2.0"},
+                            method="POST",
+                        )
+                        with urllib.request.urlopen(req, timeout=_get_brain_proxy_timeout()) as resp:
+                            res_payload = json.loads(resp.read().decode("utf-8"))
+                            self._send_json(resp.status, res_payload)
+                    except urllib.error.HTTPError as err:
+                        try:
+                            err_body = json.loads(err.read().decode("utf-8"))
+                        except Exception:
+                            err_body = {"error": str(err)}
+                        self._send_json(err.code, err_body)
+                    except Exception as exc:
+                        self._send_json(503, {"error": f"Brain API unreachable: {exc}", "status": "unavailable"})
                     return
 
                 if url.path.startswith("/api/v1/actions/"):
