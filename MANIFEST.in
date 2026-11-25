@@ -1,5 +1,6 @@
 include LICENSE NOTICE.md README.md AGENTS.md ARCHITECTURE.md CHANGELOG.md EPIC_SCOPE_MANIFEST.md PRESENTATION_RUNBOOK.md SECURITY.md TEST_READY.md GEMINI.md
 include index.html live-cluster-sanitized.json sample-graph-data.json settled_production_systems.yaml config.*.yaml .env.example
+recursive-include docs *.md
 recursive-include opscryer *.py *.json *.yaml
 global-exclude __pycache__ *.py[co]
 prune scratch

@@ -1880,6 +1880,7 @@ def render_standalone_browser_html(default_api_base: str = "", dataset: dict[str
       <span class="badge" id="piece-badge">Piece A: Standalone UI</span>
       <span class="badge" id="adapter-mode-badge" style="border-color:var(--green);color:var(--green);">STANDALONE_MOCK</span>
       <span class="badge" id="fps-telemetry-badge" style="border-color:var(--amber);color:var(--amber);">⚡ 60 FPS • 0.3ms Zoom</span>
+      <span class="badge" id="host-snapshot-badge" style="display:none;border-color:var(--cyan);color:var(--cyan);" role="status" aria-live="polite"></span>
     </div>
 
     <div class="currency-strip" id="rts-currencies-strip"></div>
@@ -3611,8 +3612,287 @@ def render_standalone_browser_html(default_api_base: str = "", dataset: dict[str
       if (k === 'q' || k === 'Q') enterSelectedBoxLayer();
       else if (k === 'w' || k === 'W' || k === 'Escape' || k === 'Backspace') ascendBoxLayer();
     }
+    const OpsCryerHostSnapshotBridge = {
+      CONTRACT_VERSION: 1,
+      MESSAGE_TYPE: 'OPSCRYER_HOST_SNAPSHOT',
+      READY_MESSAGE_TYPE: 'OPSCRYER_READY',
+      EVENT_NAME: 'opscryer:host-snapshot',
+      MAX_BYTES: 524288,
+      MAX_DEPTH: 16,
+      MAX_ITEMS: 1000,
+      _PROTO_KEYS: new Set(['__proto__', 'constructor', 'prototype']),
+      _EXACT_SECRET_KEYS: new Set([
+        'token', 'tokens', 'access_token', 'refresh_token', 'id_token', 'private_token',
+        'oauth_token', 'auth_token', 'session_token', 'csrf_token', 'bearer_token',
+        'service_account_token', 'aws_session_token', 'authorization', 'proxy_authorization',
+        'www_authenticate', 'cookie', 'cookies', 'set_cookie', 'secret', 'secrets',
+        'client_secret', 'session_secret', 'webhook_secret', 'signing_secret', 'jwt_secret',
+        'secret_key', 'secret_access_key', 'aws_secret_access_key', 'password', 'passwords',
+        'passwd', 'passphrase', 'pwd', 'api_key', 'apikey', 'x_api_key', 'api_keys',
+        'apikeys', 'private_key', 'privatekey', 'private_keys', 'privatekeys', 'ssh_key',
+        'signing_key', 'encryption_key', 'master_key', 'credential', 'credentials',
+        'kubeconfig', 'bearer'
+      ]),
+      _SECRET_WORDS: new Set([
+        'token', 'tokens', 'secret', 'secrets', 'password', 'passwords', 'passwd',
+        'passphrase', 'cookie', 'cookies', 'authorization', 'kubeconfig', 'apikey',
+        'apikeys', 'privatekey', 'privatekeys', 'credential', 'credentials'
+      ]),
+      normalizeOrigin(raw) {
+        if (typeof raw !== 'string') return null;
+        const trimmed = raw.trim();
+        if (!trimmed || trimmed.toLowerCase() === 'null' || trimmed.includes('*') || trimmed.includes('@') || /\s/.test(trimmed)) return null;
+        for (let i = 0; i < trimmed.length; i++) {
+          const code = trimmed.charCodeAt(i);
+          if (code < 32 || code === 127) return null;
+        }
+        try {
+          const parsed = new URL(trimmed);
+          if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
+          if (parsed.username || parsed.password || parsed.search || parsed.hash) return null;
+          if (parsed.pathname && parsed.pathname !== '/') return null;
+          if (!parsed.origin || parsed.origin === 'null') return null;
+          return parsed.origin;
+        } catch (_e) {
+          return null;
+        }
+      },
+      _collectConfiguredOrigins(includeSameOrigin) {
+        const out = new Set();
+        const addRaw = val => {
+          if (!val) return;
+          if (Array.isArray(val)) { val.forEach(addRaw); return; }
+          if (typeof val === 'string') {
+            val.split(/[\s,]+/).forEach(part => {
+              const norm = this.normalizeOrigin(part);
+              if (norm) out.add(norm);
+            });
+          }
+        };
+        if (typeof window !== 'undefined' && window) {
+          if (includeSameOrigin && window.location && window.location.origin) {
+            const same = this.normalizeOrigin(String(window.location.origin));
+            if (same) out.add(same);
+          }
+          addRaw(window.__OPSCRYER_HOST_ALLOWED_ORIGINS__);
+          if (window.__OPSCRYER_CONFIG__ && typeof window.__OPSCRYER_CONFIG__ === 'object') {
+            addRaw(window.__OPSCRYER_CONFIG__.hostAllowedOrigins);
+          }
+          try {
+            const search = (window.location && window.location.search) || '';
+            if (search && typeof URLSearchParams === 'function') {
+              const params = new URLSearchParams(search);
+              ['hostOrigin', 'host_origin', 'hostOrigins', 'host_origins'].forEach(k => {
+                params.getAll(k).forEach(addRaw);
+              });
+            }
+          } catch (_e) {}
+        }
+        return Array.from(out);
+      },
+      resolveTrustedOrigins() {
+        return this._collectConfiguredOrigins(true);
+      },
+      isTrustedOrigin(origin) {
+        const norm = this.normalizeOrigin(origin);
+        if (!norm) return false;
+        const allowed = this.resolveTrustedOrigins();
+        return allowed.length > 0 && allowed.includes(norm);
+      },
+      isForbiddenSecretKey(key) {
+        if (typeof key !== 'string') return true;
+        const trimmed = key.trim();
+        if (!trimmed) return false;
+        if (this._PROTO_KEYS.has(trimmed) || this._PROTO_KEYS.has(trimmed.toLowerCase())) return true;
+        const snake = trimmed
+          .replace(/([A-Z]+)([A-Z][a-z])/g, '$1_$2')
+          .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '_')
+          .replace(/^_+|_+$/g, '');
+        if (this._EXACT_SECRET_KEYS.has(snake)) return true;
+        const words = snake.split('_').filter(Boolean);
+        if (words.some(w => this._SECRET_WORDS.has(w))) return true;
+        for (let i = 0; i < words.length - 1; i++) {
+          const a = words[i], b = words[i + 1];
+          if ((a === 'api' || a === 'private' || a === 'secret' || a === 'session' || a === 'signing' || a === 'access') && (b === 'key' || b === 'keys')) return true;
+          if (a === 'client' && b === 'secret') return true;
+        }
+        return false;
+      },
+      _isPlainObject(val) {
+        return Boolean(val && typeof val === 'object' && !Array.isArray(val));
+      },
+      _hasControlChars(text) {
+        for (let i = 0; i < text.length; i++) {
+          const c = text.charCodeAt(i);
+          if (c < 32 || c === 127) return true;
+        }
+        return false;
+      },
+      _scanSafe(node, depth) {
+        if (depth > this.MAX_DEPTH) return false;
+        if (node === null || node === undefined || typeof node === 'boolean') return true;
+        if (typeof node === 'number') return Number.isFinite(node);
+        if (typeof node === 'string') return !node.includes('\u0000') && !/^\s*bearer\s+\S+/i.test(node);
+        if (Array.isArray(node)) {
+          if (node.length > this.MAX_ITEMS) return false;
+          for (let i = 0; i < node.length; i++) {
+            if (!this._scanSafe(node[i], depth + 1)) return false;
+          }
+          return true;
+        }
+        if (typeof node === 'object') {
+          const keys = Object.getOwnPropertyNames(node);
+          for (let i = 0; i < keys.length; i++) {
+            const k = keys[i];
+            if (this.isForbiddenSecretKey(k)) return false;
+            if (!this._scanSafe(node[k], depth + 1)) return false;
+          }
+          return true;
+        }
+        return false;
+      },
+      validateAndSanitize(raw) {
+        if (!this._isPlainObject(raw)) return null;
+        if (raw.type !== this.MESSAGE_TYPE) return null;
+        let serialized = '';
+        try {
+          serialized = JSON.stringify(raw);
+        } catch (_e) {
+          return null;
+        }
+        if (!serialized || serialized.length > this.MAX_BYTES) return null;
+        if (!this._scanSafe(raw, 0)) return null;
+        let version = 1;
+        if (raw.version !== undefined && raw.version !== null) {
+          if (typeof raw.version !== 'number' || !Number.isInteger(raw.version) || raw.version !== this.CONTRACT_VERSION) return null;
+          version = raw.version;
+        }
+        if (typeof raw.source !== 'string' || !raw.source.trim() || raw.source.length > 128 || this._hasControlChars(raw.source)) return null;
+        const revision = raw.revision === undefined ? 0 : raw.revision;
+        if (typeof revision !== 'number' || !Number.isInteger(revision) || revision < 0) return null;
+        const updatedAt = raw.updatedAt === undefined ? '' : raw.updatedAt;
+        if (typeof updatedAt !== 'string' || updatedAt.length > 64 || this._hasControlChars(updatedAt)) return null;
+        const connected = raw.connected === undefined ? false : raw.connected;
+        if (typeof connected !== 'boolean') return null;
+        if (!this._isPlainObject(raw.data)) return null;
+        const d = raw.data;
+        const catalogEntities = d.catalogEntities === undefined || d.catalogEntities === null ? [] : d.catalogEntities;
+        if (!Array.isArray(catalogEntities) || catalogEntities.length > this.MAX_ITEMS || !catalogEntities.every(item => this._isPlainObject(item))) return null;
+        const toOptArray = v => (v === undefined || v === null ? null : (Array.isArray(v) && v.length <= this.MAX_ITEMS ? v : false));
+        const topMrs = toOptArray(d.mergeRequests);
+        const topStarred = toOptArray(d.starredRepos);
+        const topPipelines = toOptArray(d.pipelines);
+        if (topMrs === false || topStarred === false || topPipelines === false) return null;
+        const rawProviders = d.providers === undefined || d.providers === null ? {} : d.providers;
+        if (!this._isPlainObject(rawProviders)) return null;
+        const providers = {};
+        const provKeys = Object.keys(rawProviders);
+        for (let i = 0; i < provKeys.length; i++) {
+          const pk = provKeys[i];
+          if (!/^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/.test(pk) || !this._isPlainObject(rawProviders[pk])) return null;
+          providers[pk] = JSON.parse(JSON.stringify(rawProviders[pk]));
+        }
+        const rawGl = providers.gitlab || {};
+        const glMrs = toOptArray(rawGl.mergeRequests);
+        const glStarred = toOptArray(rawGl.starredRepos);
+        const glPipelines = toOptArray(rawGl.pipelines);
+        if (glMrs === false || glStarred === false || glPipelines === false) return null;
+        const finalMrs = glMrs !== null ? glMrs : (topMrs !== null ? topMrs : []);
+        const finalStarred = glStarred !== null ? glStarred : (topStarred !== null ? topStarred : []);
+        const finalPipelines = glPipelines !== null ? glPipelines : (topPipelines !== null ? topPipelines : []);
+        providers.gitlab = {...rawGl, mergeRequests: finalMrs, starredRepos: finalStarred, pipelines: finalPipelines};
+        if (providers.kubernetes) {
+          const kClusters = toOptArray(providers.kubernetes.clusters);
+          const kWorkloads = toOptArray(providers.kubernetes.workloads);
+          if (kClusters === false || kWorkloads === false) return null;
+          providers.kubernetes = {...providers.kubernetes, clusters: kClusters || [], workloads: kWorkloads || []};
+        }
+        if (providers.aws) {
+          const aAccounts = toOptArray(providers.aws.accounts);
+          const aResources = toOptArray(providers.aws.resources);
+          if (aAccounts === false || aResources === false) return null;
+          providers.aws = {...providers.aws, accounts: aAccounts || [], resources: aResources || []};
+        }
+        const outTopMrs = (topMrs && topMrs.length) ? topMrs : finalMrs;
+        const outTopStarred = (topStarred && topStarred.length) ? topStarred : finalStarred;
+        const outTopPipelines = (topPipelines && topPipelines.length) ? topPipelines : finalPipelines;
+        return JSON.parse(JSON.stringify({
+          type: this.MESSAGE_TYPE,
+          version: version,
+          source: raw.source.trim(),
+          revision: revision,
+          updatedAt: updatedAt,
+          connected: connected,
+          data: {
+            catalogEntities: catalogEntities,
+            providers: providers,
+            mergeRequests: outTopMrs,
+            starredRepos: outTopStarred,
+            pipelines: outTopPipelines
+          }
+        }));
+      },
+      _updateStatusBadge(snapshot) {
+        const badge = $('host-snapshot-badge');
+        if (!badge) return;
+        const entCount = snapshot.data.catalogEntities.length;
+        const mrCount = snapshot.data.providers.gitlab.mergeRequests.length;
+        const color = snapshot.connected ? 'var(--green)' : 'var(--cyan)';
+        if (badge.style) {
+          badge.style.display = 'inline-flex';
+          badge.style.borderColor = color;
+          badge.style.color = color;
+        }
+        badge.textContent = '🔗 Host (' + snapshot.source + '): ' + entCount + ' entities • ' + mrCount + ' MRs' + (snapshot.connected ? ' • LIVE' : ' • SYNCED');
+      },
+      handleMessage(event) {
+        if (!event || typeof event !== 'object' || !this._isPlainObject(event.data)) return false;
+        if (event.data.type !== this.MESSAGE_TYPE) return false;
+        if (!this.isTrustedOrigin(String(event.origin || ''))) return false;
+        const snapshot = this.validateAndSanitize(event.data);
+        if (!snapshot) return false;
+        if (typeof window !== 'undefined' && window) {
+          window.__OPSCRYER_HOST_SNAPSHOT__ = snapshot;
+        }
+        this._updateStatusBadge(snapshot);
+        if (typeof window !== 'undefined' && window && typeof window.dispatchEvent === 'function') {
+          let customEvt = null;
+          if (typeof CustomEvent === 'function') {
+            customEvt = new CustomEvent(this.EVENT_NAME, {detail: snapshot});
+          } else {
+            customEvt = {type: this.EVENT_NAME, detail: snapshot};
+          }
+          window.dispatchEvent(customEvt);
+        }
+        return true;
+      },
+      init() {
+        if (typeof window === 'undefined' || !window) return;
+        if (window.__OPSCRYER_HOST_SNAPSHOT__ === undefined) {
+          window.__OPSCRYER_HOST_SNAPSHOT__ = null;
+        }
+        if (typeof window.addEventListener === 'function') {
+          window.addEventListener('message', ev => this.handleMessage(ev));
+        }
+        const explicitOrigins = this._collectConfiguredOrigins(false);
+        if (explicitOrigins.length > 0 && window.parent && window.parent !== window && typeof window.parent.postMessage === 'function') {
+          const readyPayload = {type: this.READY_MESSAGE_TYPE, version: this.CONTRACT_VERSION};
+          explicitOrigins.forEach(targetOrigin => {
+            try {
+              window.parent.postMessage(readyPayload, targetOrigin);
+            } catch (_e) {}
+          });
+        }
+      }
+    };
     if (typeof document !== 'undefined' && document.addEventListener) {
       document.addEventListener('keydown', handleSpatialKeydown);
+    }
+    OpsCryerHostSnapshotBridge.init();
+    if (typeof window !== 'undefined' && window) {
+      window.OpsCryerHostSnapshotBridge = OpsCryerHostSnapshotBridge;
     }
     SpatialGraphAdapter.init();
     window.SpatialGraphAdapter = SpatialGraphAdapter;

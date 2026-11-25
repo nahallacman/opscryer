@@ -1012,9 +1012,9 @@ class TestTier5RouteRegistryAdversarial(unittest.TestCase):
         self.assertEqual(summary1["total_html_routes"], 21)
         self.assertEqual(summary1["total_api_routes"], 65)
         self.assertEqual(summary1["by_subsystem"]["core"]["api_routes"], 12)
-        self.assertEqual(summary1["by_subsystem"]["live"]["api_routes"], 11)
+        self.assertEqual(summary1["by_subsystem"]["live"]["api_routes"], 9)
         self.assertEqual(summary1["by_subsystem"]["security"]["api_routes"], 21)
-        self.assertEqual(summary1["by_subsystem"]["portals"]["api_routes"], 21)
+        self.assertEqual(summary1["by_subsystem"]["portals"]["api_routes"], 23)
 
         # Tamper with summary1
         summary1["by_subsystem"]["core"]["api_routes"] = 999

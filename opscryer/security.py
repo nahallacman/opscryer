@@ -2,6 +2,12 @@
 """Telemetry sanitization, security audits, compliance, and chaos isolation."""
 
 from chaos_blast_radius import verify_all_six_chaos_planes
+from host_snapshot_contract import (
+    HostSnapshotValidationError,
+    is_forbidden_secret_key,
+    is_trusted_host_origin,
+    validate_and_sanitize_host_snapshot,
+)
 from oidc_rbac_verifier import audit_cluster_ingress_oidc_posture
 from openbao_kms_provenance import audit_openbao_secret_provenance
 from oscal_compliance import build_oscal_hud_posture_report
@@ -16,4 +22,8 @@ __all__ = [
     'audit_openbao_secret_provenance',
     'audit_cluster_ingress_oidc_posture',
     'verify_all_six_chaos_planes',
+    'HostSnapshotValidationError',
+    'is_forbidden_secret_key',
+    'is_trusted_host_origin',
+    'validate_and_sanitize_host_snapshot',
 ]

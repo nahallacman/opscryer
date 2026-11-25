@@ -41,6 +41,7 @@ py-modules = [
     "gitops_release_cockpit",
     "golden_path_gates",
     "gpu_and_household_triage",
+    "host_snapshot_contract",
     "http_transport",
     "import_work_suite",
     "incident_commander",

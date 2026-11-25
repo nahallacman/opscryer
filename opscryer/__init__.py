@@ -32,7 +32,7 @@ PACKAGE_SUBSYSTEMS = {
             'openbao_kms_provenance', 'oidc_rbac_verifier', 'chaos_blast_radius',
             'pqc_security', 'action_cards', 'cybersecurity_bridge',
             'mcp_bridge', 'gitops_promotion_bridge', 'itsm_chatops_bridge',
-            'flight_recorder',
+            'flight_recorder', 'host_snapshot_contract',
         ],
         'responsibility': 'Telemetry sanitization, security audits, compliance, and chaos isolation.',
     },
