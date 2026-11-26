@@ -34,7 +34,7 @@ class DogfoodGraphTests(unittest.TestCase):
     def test_l0_only_root_and_seven_aggregate_currencies(self):
         result = self.query(0)
         self.assertEqual([n["id"] for n in result["nodes"]], [graph.ROOT_ID])
-        self.assertIn("Root Citadel", result["node"]["label"])
+        self.assertIn("System Root", result["node"]["label"])
         self.assertEqual(result["node"]["drilldown_children"], [])
         self.assertEqual(result["node"]["encapsulated_child_count"], 1)
         self.assertEqual(result["edges"], [])

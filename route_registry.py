@@ -68,6 +68,7 @@ HTML_PORTAL_ROUTES = (
     {"path": "/jev-eval", "title": "Jev Calibration Benchmark", "subsystem": "portals", "module": "jev_calibration_eval"},
     {"path": "/docs", "title": "API Documentation", "subsystem": "portals", "module": "openapi_spec"},
     {"path": "/tactical-deck", "title": "Tactical Security & Federation Deck", "subsystem": "portals", "module": "tactical_security_deck"},
+    {"path": "/world-map", "title": "2.5D RTS Knowledge Graph World Map", "subsystem": "portals", "module": "world_map_engine"},
 )
 
 
@@ -267,6 +268,27 @@ API_V1_ROUTES = {
     "/api/v1/flight-recorder/replay": {
         "allowed_params": set(), "module": "flight_recorder", "subsystem": "security",
         "description": "Deterministically verify and replay a Flight Recorder incident capsule at 1x-100x speed."},
+    "/api/v1/world-map/layout": {
+        "allowed_params": {"scope", "mode", "nodes"}, "module": "world_map_engine", "subsystem": "portals",
+        "description": "Deterministic 2.5D/3D World Map coordinates, territories, edges, and unit types."},
+    "/api/v1/world-map/unit-types": {
+        "allowed_params": set(), "module": "unit_archetypes", "subsystem": "portals",
+        "description": "List built-in and custom World Map unit archetypes or register a custom unit type via POST."},
+    "/api/v1/graph/levels": {
+        "allowed_params": {"node_ids", "scope"}, "module": "graph_layers", "subsystem": "portals",
+        "description": "7-level Knowledge Graph breakdown (Project, Feature, Include/Dependency, Requirement, Test, Deployment, Contract) and selection stats."},
+    "/api/v1/datasets/dogfood": {
+        "allowed_params": {"eval"}, "module": "dataset_tree_store", "subsystem": "portals",
+        "description": "Configurable 3-Tool Self-Dogfood Dataset (opscryer + brain + meshworks) and optional self-understanding evaluation."},
+    "/api/v1/datasets/tree": {
+        "allowed_params": {"include_dogfood", "scope"}, "module": "dataset_tree_store", "subsystem": "portals",
+        "description": "Normalized dataset tree with contiguous DFS pre-order intervals [dfs_in, dfs_out) and initial bitmask."},
+    "/api/v1/workspace/config": {
+        "allowed_params": set(), "module": "workspace_layout", "subsystem": "portals",
+        "description": "Central workspace row/panel configurator presets, panel metadata, and optional runtime integrations."},
+    "/api/v1/swarm/c2-summary": {
+        "allowed_params": set(), "module": "opscryer_browser", "subsystem": "portals",
+        "description": "Optional headless Swarm C2 DDR4 RAMCache and issue broker summary when OPSCRYER_SWARM_API_URL is set."},
 }
 
 

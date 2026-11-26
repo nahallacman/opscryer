@@ -3,6 +3,19 @@
 
 All notable changes to OpsCryer are documented in this file.
 
+## [1.3.0] - 2026-11-25
+
+### Added
+- Unified 3-view spatial canvas (`Local Links`, `Layer Boxes`, and selectable `2D Schematic` / `2.5D Elevation` / `3D Volumetric` projections) with bespoke `64x64` vector engineering schematics and zero game lore (`world_map_engine.py`, `unit_archetypes.py`).
+- Seven-Level Knowledge Graph taxonomy (`project`, `feature`, `dependency`, `requirement`, `test`, `deployment`, `contract`), RTS unit-console breakdown stats, `graph_layers` World Map stacking, and Full-Truth mode (`OPSCRYER_TRUTH_MODE=1`) with Positive Pass Evidence tracking (`graph_layers.py`).
+- Toggleable normalized Euler-tour DFS Dataset Tree Sidebar (`dataset_tree_store.py`), 3-tool dogfood dataset (`opscryer`, `brain`, `meshworks`), and overview-first Architectural Rationale Dossier (`docs/ARCHITECTURE_RATIONALE.md`).
+- Minimal `focused` default loadout (`workspace_layout.py`) with org-wide uncustomized inheritance, deep-link node inspector, collapsed Ask Brain drawer (`opscryer_browser.py`), and user-delegated `auth_required` Sign-In UI + header proxy (`#brain-auth-banner`, `#brain-auth-dialog`, `sessionStorage`-scoped tokens).
+- Origin-scoped `OPSCRYER_HOST_SNAPSHOT` v1 `postMessage` contract & fail-closed validator (`host_snapshot_contract.py`, `docs/HOST_SNAPSHOT_CONTRACT.md`, `OpsCryerHostSnapshotBridge`, `#host-snapshot-badge`) with recursive secret-key stripping and `opscryer.security` exports.
+- Repo-native `.ai/project.json`, `.ai/design/architecture.md`, `.ai/plans/roadmap.md`, concise OpsCryer skills, and `verify_ai_project_hygiene()` enforcement in `scripts/ci_verify.py`.
+
+### Fixed
+- Bounded small-body draining before early `4xx` POST replies (`_drain_small_post_body`) to prevent Windows loopback TCP reset races.
+
 ## [1.2.1] - 2026-11-20
 
 ### Security

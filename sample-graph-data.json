@@ -487,65 +487,65 @@
   ],
   "object_archetypes": {
     "company_root": {
-      "archetype_id": "CITADEL_ROOT",
-      "archetype_title": "Command Citadel",
-      "crest_icon": "🏰",
+      "archetype_id": "SYSTEM_ROOT",
+      "archetype_title": "Platform Architecture Root",
+      "crest_icon": "◈",
       "border_color": "#38BDF8",
       "vital_label": "Ecosystem Readiness",
       "vital_pct": 98
     },
     "company_team": {
-      "archetype_id": "GUILD_TEAM",
-      "archetype_title": "Engineering Garrison",
-      "crest_icon": "🛡️",
+      "archetype_id": "ENGINEERING_TEAM",
+      "archetype_title": "Engineering Team",
+      "crest_icon": "⬢",
       "border_color": "#60A5FA",
       "vital_label": "Team Sprint Capacity",
       "vital_pct": 94
     },
     "engineering_project": {
-      "archetype_id": "FORGE_PROJECT",
-      "archetype_title": "Project Foundry",
-      "crest_icon": "⚒️",
+      "archetype_id": "PROJECT_REPO",
+      "archetype_title": "Engineering Project",
+      "crest_icon": "⌘",
       "border_color": "#A855F7",
       "vital_label": "Pipeline Gate Health",
       "vital_pct": 97
     },
     "ai_agent_unit": {
-      "archetype_id": "CONSTRUCT_AI_UNIT",
-      "archetype_title": "Autonomous RTS Unit",
-      "crest_icon": "🤖",
+      "archetype_id": "AI_AGENT_UNIT",
+      "archetype_title": "Autonomous AI Unit",
+      "crest_icon": "◉",
       "border_color": "#22C55E",
       "vital_label": "Cognitive Grounding SLA",
       "vital_pct": 96
     },
     "operational_process": {
-      "archetype_id": "CODEX_PROCESS",
-      "archetype_title": "Tactical Codex Runbook",
-      "crest_icon": "📜",
+      "archetype_id": "PROCESS_SPEC",
+      "archetype_title": "Operating Process",
+      "crest_icon": "⎇",
       "border_color": "#14B8A6",
       "vital_label": "Policy Coverage",
       "vital_pct": 100
     },
     "knowledge_article": {
-      "archetype_id": "TOME_KNOWLEDGE_ARTICLE",
-      "archetype_title": "Runbook Knowledge Tome",
-      "crest_icon": "📘",
+      "archetype_id": "KNOWLEDGE_SPEC",
+      "archetype_title": "Runbook & Spec",
+      "crest_icon": "☷",
       "border_color": "#38BDF8",
       "vital_label": "Runbook Freshness",
       "vital_pct": 100
     },
     "kubernetes_deployment": {
-      "archetype_id": "NEXUS_DEPLOYMENT",
-      "archetype_title": "K8s Warp Nexus",
-      "crest_icon": "☸️",
+      "archetype_id": "CLUSTER_WORKLOAD",
+      "archetype_title": "Cluster Workload",
+      "crest_icon": "☸",
       "border_color": "#06B6D4",
       "vital_label": "Replica Readiness",
       "vital_pct": 95
     },
     "physical_hardware": {
-      "archetype_id": "REACTOR_HARDWARE",
-      "archetype_title": "Compute & GPU Reactor",
-      "crest_icon": "⚡",
+      "archetype_id": "COMPUTE_NODE",
+      "archetype_title": "Compute & GPU Node",
+      "crest_icon": "▤",
       "border_color": "#F59E0B",
       "vital_label": "Thermal & RAM Headroom",
       "vital_pct": 88

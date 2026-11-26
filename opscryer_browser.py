@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import argparse
 from collections import deque
+from collections.abc import Mapping
 from copy import deepcopy
 import http.server
 import ipaddress
@@ -269,65 +270,65 @@ CONTRACT_VERSION = "1.0-separable-spatial-graph-contract"
 
 STANDALONE_OBJECT_ARCHETYPES: dict[str, dict[str, Any]] = {
     "company_root": {
-        "archetype_id": "CITADEL_ROOT",
-        "archetype_title": "Command Citadel",
-        "crest_icon": "🏰",
+        "archetype_id": "SYSTEM_ROOT",
+        "archetype_title": "Platform Architecture Root",
+        "crest_icon": "◈",
         "border_color": "#38BDF8",
         "vital_label": "Ecosystem Readiness",
         "vital_pct": 98,
     },
     "company_team": {
-        "archetype_id": "GUILD_TEAM",
-        "archetype_title": "Engineering Garrison",
-        "crest_icon": "🛡️",
+        "archetype_id": "ENGINEERING_TEAM",
+        "archetype_title": "Engineering Team",
+        "crest_icon": "⬢",
         "border_color": "#60A5FA",
         "vital_label": "Team Sprint Capacity",
         "vital_pct": 94,
     },
     "engineering_project": {
-        "archetype_id": "FORGE_PROJECT",
-        "archetype_title": "Project Foundry",
-        "crest_icon": "⚒️",
+        "archetype_id": "PROJECT_REPO",
+        "archetype_title": "Engineering Project",
+        "crest_icon": "⌘",
         "border_color": "#A855F7",
         "vital_label": "Pipeline Gate Health",
         "vital_pct": 97,
     },
     "ai_agent_unit": {
-        "archetype_id": "CONSTRUCT_AI_UNIT",
-        "archetype_title": "Autonomous RTS Unit",
-        "crest_icon": "🤖",
+        "archetype_id": "AI_AGENT_UNIT",
+        "archetype_title": "Autonomous AI Unit",
+        "crest_icon": "◉",
         "border_color": "#22C55E",
         "vital_label": "Cognitive Grounding SLA",
         "vital_pct": 96,
     },
     "operational_process": {
-        "archetype_id": "CODEX_PROCESS",
-        "archetype_title": "Tactical Codex Runbook",
-        "crest_icon": "📜",
+        "archetype_id": "PROCESS_SPEC",
+        "archetype_title": "Operating Process",
+        "crest_icon": "⎇",
         "border_color": "#14B8A6",
         "vital_label": "Policy Coverage",
         "vital_pct": 100,
     },
     "knowledge_article": {
-        "archetype_id": "TOME_KNOWLEDGE_ARTICLE",
-        "archetype_title": "Runbook Knowledge Tome",
-        "crest_icon": "📘",
+        "archetype_id": "KNOWLEDGE_SPEC",
+        "archetype_title": "Runbook & Spec",
+        "crest_icon": "☷",
         "border_color": "#38BDF8",
         "vital_label": "Runbook Freshness",
         "vital_pct": 100,
     },
     "kubernetes_deployment": {
-        "archetype_id": "NEXUS_DEPLOYMENT",
-        "archetype_title": "K8s Warp Nexus",
-        "crest_icon": "☸️",
+        "archetype_id": "CLUSTER_WORKLOAD",
+        "archetype_title": "Cluster Workload",
+        "crest_icon": "☸",
         "border_color": "#06B6D4",
         "vital_label": "Replica Readiness",
         "vital_pct": 95,
     },
     "physical_hardware": {
-        "archetype_id": "REACTOR_HARDWARE",
-        "archetype_title": "Compute & GPU Reactor",
-        "crest_icon": "⚡",
+        "archetype_id": "COMPUTE_NODE",
+        "archetype_title": "Compute & GPU Node",
+        "crest_icon": "▤",
         "border_color": "#F59E0B",
         "vital_label": "Thermal & RAM Headroom",
         "vital_pct": 88,
@@ -669,15 +670,135 @@ def build_standalone_mock_dataset() -> dict[str, Any]:
 get_standalone_mock_dataset = build_standalone_mock_dataset
 
 
-def _get_brain_api_url() -> str:
-    """Dynamically read and validate OPSCRYER_BRAIN_API_URL allowing http or https."""
-    raw = os.environ.get("OPSCRYER_BRAIN_API_URL", "").strip().rstrip("/")
-    if not raw:
+MAX_BRAIN_PROXY_RESPONSE_BYTES = 4 * 1024 * 1024
+MAX_BRAIN_PROXY_ERROR_BYTES = 65536
+_BLOCKED_BRAIN_HOSTS = frozenset(
+    {"metadata.google.internal", "metadata.goog", "metadata", "instance-data"}
+)
+_AWS_IMDS_V6 = ipaddress.ip_address("fd00:ec2::254")
+
+
+class _BrainProxyRedirectError(Exception):
+    """Raised when an upstream Brain API proxy request attempts to redirect."""
+
+
+class _NoRedirectBrainHandler(urllib.request.HTTPRedirectHandler):
+    """Fail closed on HTTP redirects returned by upstream Brain API or service probes."""
+
+    def redirect_request(
+        self, req: Any, fp: Any, code: int, msg: str, headers: Any, newurl: str
+    ) -> Any:
+        raise _BrainProxyRedirectError(f"Upstream redirect ({code}) blocked")
+
+
+def _build_brain_no_redirect_opener() -> urllib.request.OpenerDirector:
+    return urllib.request.build_opener(_NoRedirectBrainHandler())
+
+
+def _is_blocked_brain_ip(host_only: str) -> bool:
+    """Return True for link-local, IMDS (v4/v6), multicast, or unspecified IP literals."""
+    try:
+        addr = ipaddress.ip_address(host_only)
+    except ValueError:
+        return False
+    mapped = getattr(addr, "ipv4_mapped", None)
+    if mapped is not None:
+        addr = mapped
+    return bool(
+        addr.is_link_local
+        or addr.is_unspecified
+        or addr.is_multicast
+        or addr == _AWS_IMDS_V6
+    )
+
+
+def _get_validated_upstream_url(env_var: str) -> str:
+    """Dynamically read and validate an upstream API base URL against SSRF/IMDS/credential smuggling."""
+    raw = os.environ.get(env_var, "").strip().rstrip("/")
+    if not raw or any(ch.isspace() or ord(ch) < 32 or ord(ch) == 127 for ch in raw):
         return ""
-    parsed = urlsplit(raw)
-    if parsed.scheme.lower() in {"http", "https"} and parsed.netloc:
-        return raw
-    return ""
+    try:
+        parsed = urlsplit(raw)
+    except ValueError:
+        return ""
+    # Reject non-HTTP(S) schemes, missing host, embedded credentials, query strings, or fragments
+    if (
+        parsed.scheme.lower() not in {"http", "https"}
+        or not parsed.netloc
+        or not parsed.hostname
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.query
+        or parsed.fragment
+    ):
+        return ""
+    host_only = (parsed.hostname or "").strip().lower().strip("[]").split("%", 1)[0]
+    if not host_only or host_only in _BLOCKED_BRAIN_HOSTS or _is_blocked_brain_ip(host_only):
+        return ""
+    if not _is_permitted_gateway_host(parsed.netloc):
+        return ""
+    return raw
+
+
+def _get_brain_api_url() -> str:
+    """Dynamically read and validate OPSCRYER_BRAIN_API_URL against SSRF/IMDS/credential smuggling."""
+    return _get_validated_upstream_url("OPSCRYER_BRAIN_API_URL")
+
+
+def _get_swarm_api_url() -> str:
+    """Dynamically read and validate optional OPSCRYER_SWARM_API_URL (headless swarm-memory/C2 backend)."""
+    return _get_validated_upstream_url("OPSCRYER_SWARM_API_URL")
+
+
+def _get_telemetry_api_url() -> str:
+    """Dynamically read and validate optional OPSCRYER_TELEMETRY_API_URL (read-only cluster telemetry backend)."""
+    return _get_validated_upstream_url("OPSCRYER_TELEMETRY_API_URL")
+
+
+def _is_truth_mode_enabled() -> bool:
+    """Return True when OPSCRYER_TRUTH_MODE disables synthetic/demo fallbacks in served runtimes."""
+    raw = os.environ.get("OPSCRYER_TRUTH_MODE", "").strip().lower()
+    return raw in {"1", "true", "yes", "on"}
+
+
+def _get_truth_workspace_dir() -> Path | None:
+    """Return an optional local workspace path configured via OPSCRYER_TRUTH_WORKSPACE."""
+    raw = os.environ.get("OPSCRYER_TRUTH_WORKSPACE", "").strip()
+    if not raw:
+        return None
+    candidate = Path(raw).expanduser()
+    if candidate.is_symlink():
+        return None
+    resolved = candidate.resolve()
+    return resolved if resolved.is_dir() else None
+
+
+def _build_empty_truth_catalog(reason: str) -> dict[str, Any]:
+    """Return an honest zero-fabrication catalog when no live truth source is available."""
+    return {
+        "schema_version": CONTRACT_VERSION,
+        "source": "truth_source_unavailable",
+        "example": False,
+        "truth_mode": True,
+        "error": reason,
+        "node_count": 0,
+        "edge_count": 0,
+        "nodes": [],
+        "edges": [],
+        "rts_currencies": [
+            {"currency_id": cid, "icon": icon, "label": lbl, "display_value": "Unavailable", "supply_kind": kind, "hex_color": "#94A3B8", "available": False, "dropdown_items": []}
+            for cid, icon, lbl, kind in (
+                ("nodes", "🖥️", "Nodes", "supply_cap"),
+                ("cpu_load", "⚡", "CPU Load", "currency_rate"),
+                ("ram_load", "🧠", "RAM Load", "currency_rate"),
+                ("network_load", "🌐", "Network Routes", "currency_rate"),
+                ("build_supply", "🍖", "Build Supply", "food_supply"),
+                ("renovate_failures", "🔧", "Renovate", "upkeep_alert"),
+                ("open_mrs", "📬", "Open MRs", "production_queue"),
+            )
+        ],
+        "object_archetypes": STANDALONE_OBJECT_ARCHETYPES,
+    }
 
 
 def _get_brain_proxy_timeout() -> float:
@@ -686,6 +807,121 @@ def _get_brain_proxy_timeout() -> float:
         return max(1.0, min(float(os.environ.get("OPSCRYER_BRAIN_TIMEOUT", "15.0") or 15.0), 60.0))
     except Exception:
         return 15.0
+
+
+_DELEGATED_AUTH_HEADER_NAMES: tuple[str, ...] = (
+    "X-Brain-Delegated-Tokens",
+    "X-Brain-Delegated-Token",
+    "X-Brain-Delegated-Provider",
+)
+_MAX_DELEGATED_HEADER_BYTES = 4096
+
+
+def _extract_brain_delegated_headers(req_headers: Any) -> dict[str, str]:
+    """Extract bounded per-request user-delegated auth headers without persisting or mutating cache."""
+    if req_headers is None:
+        return {}
+    lowered_items: dict[str, str] = {}
+    if hasattr(req_headers, "items"):
+        try:
+            for raw_k, raw_v in req_headers.items():
+                key = str(raw_k or "").strip().lower()
+                if key and raw_v is not None and key not in lowered_items:
+                    lowered_items[key] = str(raw_v)
+        except Exception:
+            lowered_items = {}
+    extracted: dict[str, str] = {}
+    for name in _DELEGATED_AUTH_HEADER_NAMES:
+        raw_val: Any = None
+        if hasattr(req_headers, "get"):
+            try:
+                raw_val = req_headers.get(name)
+            except Exception:
+                raw_val = None
+        if raw_val is None:
+            raw_val = lowered_items.get(name.lower())
+        if raw_val is None:
+            continue
+        val = str(raw_val).strip()
+        if not val or any(ch in val for ch in ("\r", "\n", "\x00")):
+            continue
+        if len(val.encode("utf-8", errors="replace")) > _MAX_DELEGATED_HEADER_BYTES:
+            continue
+        extracted[name] = val
+    return extracted
+
+
+def _proxy_brain_json_request(
+    brain_url: str,
+    path_and_query: str,
+    *,
+    method: str = "GET",
+    body_bytes: bytes | None = None,
+    timeout_s: float | None = None,
+    include_brain_token: bool = True,
+    extra_headers: Mapping[str, str] | None = None,
+) -> tuple[int, dict[str, Any]]:
+    """Forward a bounded no-redirect JSON request to Central Brain or another validated local backend."""
+    if not brain_url:
+        return 503, {"error": "OPSCRYER_BRAIN_API_URL not configured"}
+    headers: dict[str, str] = {"User-Agent": "OpsCryer-Browser/2.0"}
+    if body_bytes is not None:
+        headers["Content-Type"] = "application/json"
+    token = os.environ.get("OPSCRYER_BRAIN_API_TOKEN", "").strip() if include_brain_token else ""
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    if extra_headers:
+        for hdr_name in _DELEGATED_AUTH_HEADER_NAMES:
+            raw_hdr = extra_headers.get(hdr_name)
+            if raw_hdr is None:
+                continue
+            val = str(raw_hdr).strip()
+            if (
+                val
+                and not any(ch in val for ch in ("\r", "\n", "\x00"))
+                and len(val.encode("utf-8", errors="replace")) <= _MAX_DELEGATED_HEADER_BYTES
+            ):
+                headers[hdr_name] = val
+
+    eff_timeout = float(timeout_s) if timeout_s is not None else _get_brain_proxy_timeout()
+    req = urllib.request.Request(
+        f"{brain_url}{path_and_query}",
+        data=body_bytes,
+        headers=headers,
+        method=method,
+    )
+    opener = _build_brain_no_redirect_opener()
+    try:
+        with opener.open(req, timeout=eff_timeout) as resp:
+            raw = resp.read(MAX_BRAIN_PROXY_RESPONSE_BYTES + 1)
+            if len(raw) > MAX_BRAIN_PROXY_RESPONSE_BYTES:
+                return 502, {"error": "Brain API response exceeds size limit"}
+            try:
+                parsed = json.loads(raw.decode("utf-8"))
+            except Exception:
+                return 502, {"error": "Invalid JSON response from Brain API"}
+            if not isinstance(parsed, dict):
+                return 502, {"error": "Invalid JSON response from Brain API"}
+            return int(resp.status), parsed
+    except _BrainProxyRedirectError:
+        return 502, {"error": "Brain API redirect blocked"}
+    except urllib.error.HTTPError as err:
+        try:
+            raw_err = err.read(MAX_BRAIN_PROXY_ERROR_BYTES)
+            err_parsed = json.loads(raw_err.decode("utf-8"))
+            if isinstance(err_parsed, dict):
+                return int(err.code), err_parsed
+        except Exception:
+            pass
+        finally:
+            try:
+                err.close()
+            except Exception:
+                pass
+        return int(err.code), {"error": f"Brain API returned HTTP {err.code}"}
+    except Exception as exc:
+        logger.warning("Brain API proxy error (%s): %s", type(exc).__name__, exc)
+        return 503, {"error": "Brain API unreachable"}
 
 
 def build_standalone_demo_jev_tree() -> dict[str, Any]:
@@ -956,7 +1192,7 @@ def _probe_http_json_safe(url: str, timeout_s: float = 0.45) -> tuple[bool, floa
 
     req = urllib.request.Request(url, headers={"Accept": "application/json"})
     try:
-        with urllib.request.urlopen(req, timeout=timeout_s) as resp:
+        with _build_brain_no_redirect_opener().open(req, timeout=timeout_s) as resp:
             raw = resp.read(65536).decode("utf-8", errors="replace")
             elapsed_ms = max(0.5, round((time.perf_counter() - t0) * 1000.0, 2))
             try:
@@ -1551,15 +1787,123 @@ def render_standalone_browser_html(default_api_base: str = "", dataset: dict[str
     }
     button:hover { background: rgba(56, 189, 248, 0.2); }
 
-    /* BIG MAIN PANE OF ENCAPSULATED BOXES */
+    /* BIG MAIN PANE OF ENCAPSULATED BOXES + COLLAPSIBLE DATASET TREE SIDEBAR */
+    #workspace-main-split {
+      flex: 1;
+      display: flex;
+      min-height: 0;
+      overflow: hidden;
+    }
     main#spatial-tree-stage {
       flex: 1;
+      min-width: 0;
       display: flex;
       flex-direction: column;
       padding: 0.65rem 1.05rem;
       overflow-y: auto;
       position: relative;
       gap: 0.55rem;
+    }
+    aside#dataset-tree-sidebar {
+      display: none;
+      flex-direction: column;
+      width: 325px;
+      min-width: 265px;
+      max-width: 390px;
+      background: linear-gradient(180deg, rgba(15, 23, 42, 0.98) 0%, rgba(11, 18, 34, 0.98) 100%);
+      border-left: 1px solid var(--border);
+      padding: 0.65rem 0.72rem;
+      gap: 0.45rem;
+      overflow: hidden;
+      font-size: 0.73rem;
+    }
+    .ds-sidebar-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 0.35rem;
+    }
+    .ds-sidebar-controls {
+      display: flex;
+      align-items: center;
+      gap: 0.3rem;
+      flex-wrap: wrap;
+    }
+    .ds-dogfood-toggle {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.35rem 0.5rem;
+      background: rgba(34, 197, 94, 0.08);
+      border: 1px solid rgba(34, 197, 94, 0.35);
+      border-radius: 6px;
+      color: #86EFAC;
+      font-weight: 700;
+      font-size: 0.71rem;
+      cursor: pointer;
+    }
+    #dataset-eval-output {
+      display: none;
+      padding: 0.38rem 0.5rem;
+      border-radius: 6px;
+      border: 1px solid rgba(56, 189, 248, 0.4);
+      background: rgba(2, 6, 23, 0.85);
+      font-size: 0.68rem;
+      line-height: 1.35;
+      color: #E2E8F0;
+      max-height: 120px;
+      overflow-y: auto;
+    }
+    #dataset-tree-list {
+      flex: 1;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 0.14rem;
+      padding-right: 0.2rem;
+      content-visibility: auto;
+    }
+    .ds-tree-row {
+      display: flex;
+      align-items: center;
+      gap: 0.28rem;
+      padding: 0.2rem 0.28rem;
+      border-radius: 5px;
+      border: 1px solid transparent;
+      cursor: pointer;
+      user-select: none;
+    }
+    .ds-tree-row:hover, .ds-tree-row:focus {
+      background: rgba(56, 189, 248, 0.12);
+      border-color: rgba(56, 189, 248, 0.35);
+      outline: none;
+    }
+    .ds-tree-exp {
+      background: transparent;
+      border: none;
+      color: var(--muted);
+      padding: 0 0.16rem;
+      font-size: 0.72rem;
+      min-width: 16px;
+      cursor: pointer;
+    }
+    .ds-tree-label {
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: #E2E8F0;
+    }
+    .ds-depth-0 .ds-tree-label { font-weight: 800; color: var(--cyan); }
+    .ds-depth-1 .ds-tree-label { font-weight: 700; color: #DDD6FE; }
+    .ds-depth-2 .ds-tree-label { font-weight: 600; color: #FDE68A; }
+    .ds-tree-count {
+      font-size: 0.63rem;
+      color: var(--muted);
+      background: rgba(2, 6, 23, 0.72);
+      border: 1px solid #1E293B;
+      border-radius: 999px;
+      padding: 0.04rem 0.34rem;
     }
     .layer-nav-ribbon {
       display: flex;
@@ -1785,6 +2129,85 @@ def render_standalone_browser_html(default_api_base: str = "", dataset: dict[str
       border-radius: 8px;
       box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
     }
+    #ask-brain-fab {
+      position: fixed;
+      right: 215px;
+      bottom: 12px;
+      z-index: 120;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      padding: 0.34rem 0.72rem;
+      border-radius: 999px;
+      border: 1px solid var(--cyan);
+      background: rgba(11, 18, 34, 0.94);
+      color: var(--cyan);
+      font-size: 0.72rem;
+      font-weight: 800;
+      cursor: pointer;
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.65);
+    }
+    #ask-brain-fab:hover { background: rgba(56, 189, 248, 0.18); }
+    #ask-brain-drawer {
+      position: fixed;
+      right: 14px;
+      bottom: 52px;
+      z-index: 125;
+      width: min(460px, 92vw);
+      max-height: 62vh;
+      overflow-y: auto;
+      display: none;
+      flex-direction: column;
+      gap: 0.5rem;
+      padding: 0.75rem 0.85rem;
+      border-radius: 12px;
+      border: 1px solid var(--cyan);
+      background: rgba(11, 18, 34, 0.98);
+      color: #F8FAFC;
+      box-shadow: 0 18px 48px rgba(0, 0, 0, 0.85);
+      font-size: 0.74rem;
+    }
+    #ask-brain-drawer[data-open="true"] { display: flex; }
+    .ask-brain-links-row { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+    #brain-auth-banner {
+      display: none;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 0.45rem;
+      padding: 0.42rem 0.72rem;
+      border-radius: 8px;
+      border: 1px solid var(--amber);
+      background: rgba(245, 158, 11, 0.14);
+      color: #FDE68A;
+      font-size: 0.74rem;
+    }
+    #brain-auth-dialog {
+      border: 1px solid var(--cyan);
+      border-radius: 12px;
+      background: rgba(11, 18, 34, 0.98);
+      color: #F8FAFC;
+      padding: 0.9rem 1rem;
+      width: min(440px, 92vw);
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.85);
+      font-size: 0.76rem;
+    }
+    #brain-auth-dialog::backdrop { background: rgba(2, 6, 23, 0.72); }
+    .slot-link-btn {
+      background: none;
+      border: none;
+      padding: 0;
+      color: var(--cyan);
+      text-decoration: underline;
+      font-size: inherit;
+      font-weight: 700;
+      cursor: pointer;
+      text-align: left;
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
     #opscryer-unified-tool-dock {
       display: none;
       flex-direction: column;
@@ -1840,13 +2263,296 @@ def render_standalone_browser_html(default_api_base: str = "", dataset: dict[str
       max-height: 140px;
       overflow-y: auto;
     }
+    #inline-world-map-stage {
+      display: none;
+      flex: 1;
+      min-height: 360px;
+      flex-direction: column;
+      border: 1px solid #334155;
+      border-radius: 10px;
+      overflow: hidden;
+      background: #040813;
+      content-visibility: auto;
+      contain-intrinsic-size: auto none auto 480px;
+    }
+    .inline-wm-toolbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 0.4rem;
+      flex-wrap: wrap;
+      padding: 0.38rem 0.65rem;
+      background: #0B1222;
+      border-bottom: 1px solid #1E293B;
+    }
+    .proj-segmented-bar {
+      display: inline-flex;
+      align-items: center;
+      gap: 2px;
+      padding: 2px;
+      border-radius: 7px;
+      background: #060C19;
+      border: 1px solid #26354D;
+    }
+    .proj-seg-btn {
+      position: relative;
+      border: 1px solid transparent;
+      background: transparent;
+      color: var(--muted);
+      padding: 0.22rem 0.5rem;
+      font-size: 0.69rem;
+      border-radius: 5px;
+      min-inline-size: 28px;
+      min-block-size: 26px;
+    }
+    .proj-seg-btn[aria-pressed="true"] {
+      background: rgba(56, 189, 248, 0.2);
+      border-color: var(--cyan);
+      color: var(--text);
+    }
+    .proj-seg-btn[aria-pressed="true"]::after {
+      content: "";
+      position: absolute;
+      inset: auto 4px 1px;
+      border-block-end: 2px solid var(--amber);
+    }
+    .proj-relevance-strip {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+      padding: 0.24rem 0.65rem;
+      background: rgba(7, 13, 27, 0.94);
+      border-bottom: 1px solid #1E293B;
+      font-size: 0.69rem;
+      color: #CBD5E1;
+    }
+    #inline-wm-proj-guide-tip {
+      background: #0B1222;
+      color: var(--text);
+      border: 1px solid var(--cyan);
+      border-radius: 8px;
+      padding: 0.6rem 0.78rem;
+      max-width: 400px;
+      font-size: 0.71rem;
+      line-height: 1.45;
+      box-shadow: 0 12px 28px rgba(0, 0, 0, 0.65);
+    }
+    @supports (position-area: block-end) {
+      [popover].anchored-guide-tip {
+        inset: auto;
+        margin: 0.25rem 0 0 0;
+        position-area: block-end span-inline-end;
+        position-try-fallbacks: flip-block, flip-inline;
+      }
+    }
+    @supports not (position-area: block-end) {
+      [popover].anchored-guide-tip {
+        position: fixed;
+        inset: 4.5rem 1rem auto auto;
+        margin: 0;
+      }
+    }
+    @media (pointer: coarse) {
+      .proj-seg-btn { min-block-size: 34px; min-inline-size: 40px; }
+    }
+    .inline-wm-canvas-wrap {
+      position: relative;
+      flex: 1;
+      min-height: 290px;
+      background: radial-gradient(circle at 50% 40%, #0B152A 0%, #03060F 80%);
+    }
+    canvas#inline-wm-canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+      cursor: crosshair;
+    }
+    .inline-wm-hud-strip {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 0.45rem;
+      flex-wrap: wrap;
+      padding: 0.3rem 0.65rem;
+      background: #09101E;
+      border-top: 1px solid #1E293B;
+      font-size: 0.7rem;
+    }
+    #inline-wm-group-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.25rem;
+      padding: 0.28rem 0.65rem;
+      background: #060B16;
+      border-top: 1px solid #1E293B;
+      max-height: 62px;
+      overflow-y: auto;
+    }
+    .wm-unit-chip { font-size: 0.66rem; padding: 0.16rem 0.4rem; border-width: 1px; background: #0F172A; }
+    .wm-unit-chip.active-subgroup { box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.45); background: rgba(34, 197, 94, 0.16); }
+    .wm-group-tab { font-size: 0.65rem; padding: 0.14rem 0.36rem; border-color: #334155; }
+    .wm-group-tab.populated { border-color: var(--amber); color: var(--amber); }
+    .wm-layer-pill { font-size: 0.66rem; padding: 0.15rem 0.4rem; border-color: #475569; }
+    .kg-level-stats-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.25rem;
+      align-items: center;
+    }
+    .kg-level-stat-pill {
+      font-size: 0.64rem;
+      padding: 0.14rem 0.42rem;
+      border-radius: 999px;
+      border: 1px solid #334155;
+      background: #0F172A;
+      color: var(--text);
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .kg-level-stat-pill.empty { opacity: 0.48; }
+    .kg-level-stat-pill.active {
+      box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.45);
+      background: rgba(56, 189, 248, 0.18);
+    }
+    #graph-level-breakdown-bar,
+    #tactical-6color-ribbon {
+      display: flex;
+      align-items: center;
+      gap: 0.32rem;
+      flex-wrap: wrap;
+      padding: 0.28rem 0.6rem;
+      background: rgba(11, 18, 34, 0.92);
+      border: 1px solid #1E293B;
+      border-radius: 8px;
+      font-size: 0.7rem;
+    }
+    .tactical-status-pill {
+      font-size: 0.65rem;
+      padding: 0.14rem 0.45rem;
+      border-radius: 999px;
+      background: #0F172A;
+      border: 1px solid #334155;
+      color: var(--text);
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .tactical-status-pill.active {
+      box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.5);
+      background: rgba(245, 158, 11, 0.16);
+    }
+    #truth-status-banner {
+      padding: 0.45rem 0.75rem;
+      background: rgba(239, 68, 68, 0.14);
+      border: 1px solid var(--red);
+      border-left: 4px solid var(--red);
+      border-radius: 8px;
+      color: #FECACA;
+      font-size: 0.75rem;
+      font-weight: 700;
+    }
+    #inline-local-links-stage {
+      display: none;
+      position: relative;
+      flex: 1;
+      min-height: 360px;
+      padding: 0.75rem;
+      background: radial-gradient(circle at 50% 35%, #0D182F 0%, #050912 85%);
+      border: 1px solid #334155;
+      border-radius: 10px;
+      overflow: auto;
+    }
+    .local-links-grid {
+      position: relative;
+      z-index: 2;
+      display: grid;
+      grid-template-columns: minmax(185px, 0.9fr) minmax(280px, 1.35fr) minmax(220px, 1.15fr);
+      gap: 0.9rem;
+      align-items: start;
+    }
+    .local-links-col {
+      display: flex;
+      flex-direction: column;
+      gap: 0.45rem;
+      background: rgba(9, 16, 30, 0.88);
+      border: 1px solid #1E293B;
+      border-radius: 9px;
+      padding: 0.6rem;
+    }
+    .local-links-col-title {
+      font-size: 0.68rem;
+      font-weight: 800;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: var(--cyan);
+    }
+    .local-links-focal-card {
+      background: linear-gradient(180deg, rgba(17, 28, 51, 0.96) 0%, rgba(9, 16, 30, 0.96) 100%);
+      border: 2px solid var(--cyan);
+      border-radius: 10px;
+      padding: 0.75rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.48rem;
+      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.55);
+    }
+    .local-links-tech-dock {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 0.4rem;
+      margin-top: 0.2rem;
+    }
+    .local-links-tech-box {
+      background: #060B16;
+      border: 1px solid #26354D;
+      border-radius: 7px;
+      padding: 0.4rem 0.5rem;
+      font-size: 0.7rem;
+    }
+    svg#local-links-svg-overlay {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 1;
+    }
+    .canvas-view-btn.active {
+      background: rgba(56, 189, 248, 0.24);
+      border-color: var(--cyan) !important;
+      color: #F8FAFC !important;
+      box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.45);
+    }
+    dialog#wm-inline-forge-dialog {
+      border: 1px solid var(--cyan);
+      border-radius: 10px;
+      background: #0B1222;
+      color: var(--text);
+      max-width: 640px;
+      width: 92vw;
+      padding: 1rem;
+    }
+    dialog[open]#wm-inline-forge-dialog {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+    dialog:modal { overscroll-behavior: contain; }
+    dialog::backdrop {
+      background: rgba(2, 6, 23, 0.78);
+      overflow: hidden;
+      overscroll-behavior: contain;
+    }
+__WORKSPACE_LAYOUT_CSS__
   </style>
 </head>
 <body>
   <nav class="page-navigation" aria-label="Portal navigation">
     <div class="nav-pill-group">
+      <a href="/world-map">🌐 Spatial Map (2D/2.5D/3D)</a>
       <a href="/chat">Ticket Concierge Portal</a>
-      <a href="/tactical-deck" style="border-color:var(--amber);color:var(--amber);">⚔️ Tactical Deck</a>
+      <a href="/tactical-deck" style="border-color:var(--amber);color:var(--amber);">Tactical Deck</a>
       <a href="/hub">🧭 Suite Hub</a>
       <a href="/incidents">🚨 Incidents</a>
       <a href="/capacity">⚡ Capacity &amp; GPUs</a>
@@ -1876,8 +2582,8 @@ def render_standalone_browser_html(default_api_base: str = "", dataset: dict[str
   <!-- TOP PERIMETER BAR: 7 CURRENCIES & FOOD/SUPPLY WITH LITTLE DROPDOWNS -->
   <header id="rts-top-currencies-bar">
     <div style="display:flex;align-items:center;gap:0.45rem;flex-wrap:wrap;">
-      <strong>🏰 RTS/TBS Command Overview</strong>
-      <span class="badge" id="piece-badge">Piece A: Standalone UI</span>
+      <strong>🌐 OpsCryer Spatial Architecture Console</strong>
+      <span class="badge" id="piece-badge">Topology Workbench</span>
       <span class="badge" id="adapter-mode-badge" style="border-color:var(--green);color:var(--green);">STANDALONE_MOCK</span>
       <span class="badge" id="fps-telemetry-badge" style="border-color:var(--amber);color:var(--amber);">⚡ 60 FPS • 0.3ms Zoom</span>
       <span class="badge" id="host-snapshot-badge" style="display:none;border-color:var(--cyan);color:var(--cyan);" role="status" aria-live="polite"></span>
@@ -1886,11 +2592,11 @@ def render_standalone_browser_html(default_api_base: str = "", dataset: dict[str
     <div class="currency-strip" id="rts-currencies-strip"></div>
 
     <div class="adapter-bar">
-      <select id="game-theme-select" onchange="applyGameSystemTheme(this.value)" aria-label="Video Game System Theme">
-        <option value="terran_command">🎮 Theme: Terran Command HUD</option>
-        <option value="protoss_nexus">🔮 Theme: Protoss Nexus Warp</option>
-        <option value="civ_hex_strategy">🏛️ Theme: Civ Hex Strategy</option>
-        <option value="noc_high_contrast">🛰️ Theme: Orbital High-Contrast NOC</option>
+      <select id="game-theme-select" onchange="applyGameSystemTheme(this.value)" aria-label="Console Color Theme">
+        <option value="terran_command">Theme: Blueprint Slate</option>
+        <option value="protoss_nexus">Theme: Deep Indigo Telemetry</option>
+        <option value="civ_hex_strategy">Theme: Teal Operations Grid</option>
+        <option value="noc_high_contrast">Theme: High-Contrast NOC</option>
       </select>
       <select id="zoom-density-select" onchange="onZoomDensityChange(this.value)" aria-label="Semantic Zoom Density">
         <option value="multi_depth">🔍 Zoom: L+1 Sub-Box Preview</option>
@@ -1936,7 +2642,8 @@ def render_standalone_browser_html(default_api_base: str = "", dataset: dict[str
 
   <section id="browser-filter-bar" style="display:flex;gap:0.4rem;flex-wrap:wrap;padding:0 1.1rem;margin-top:0.25rem;"></section>
 
-  <!-- BIG MAIN PANE OF ENCAPSULATED LAYER BOXES -->
+  <!-- BIG MAIN PANE OF ENCAPSULATED LAYER BOXES + DATASET TREE SIDEBAR -->
+  <div id="workspace-main-split">
   <main id="spatial-tree-stage">
     <div class="layer-nav-ribbon">
       <div style="display:flex;align-items:center;gap:0.55rem;flex-wrap:wrap;">
@@ -1945,15 +2652,35 @@ def render_standalone_browser_html(default_api_base: str = "", dataset: dict[str
         <div id="browser-ancestor-list"></div>
       </div>
       <div style="display:flex;align-items:center;gap:0.45rem;flex-wrap:wrap;">
-        <span style="font-size:0.71rem;color:var(--muted);">🖱️ Click = Select/Inspect • Double-Click / [Q] = Dive • Ctrl/Alt+Wheel = Layer Zoom • [W]/Esc = Ascend</span>
-        <button type="button" onclick="enterSelectedBoxLayer()">↘ Dive Selected [Q]</button>
-        <button type="button" onclick="ascendBoxLayer()">⬆ Ascend Layer [W]</button>
-        <button type="button" onclick="resetToRootLayer()">🏠 Root [L0]</button>
+        <span style="font-size:0.71rem;color:var(--muted);">Click = Select • DblClick/[Q] = Dive • [W]/Esc = Ascend</span>
+        <button type="button" id="view-local-links-btn" class="canvas-view-btn" onclick="setWorkspaceCanvasView('local_links')" style="border-color:var(--cyan);color:var(--cyan);">🔗 Local Links</button>
+        <button type="button" id="view-layer-boxes-btn" class="canvas-view-btn active" onclick="setWorkspaceCanvasView('boxes')" style="border-color:var(--green);color:var(--green);">📦 Layer Boxes</button>
+        <button type="button" id="toggle-world-map-btn" class="canvas-view-btn" onclick="toggleWorldMapView()" style="border-color:var(--amber);color:var(--amber);">🌐 Spatial Map</button>
+        <div class="proj-segmented-bar" id="nav-quick-proj-bar" role="toolbar" focusgroup="toolbar wrap" aria-label="Quick Spatial Projection">
+          <button type="button" id="nav-proj-2d-btn" class="proj-seg-btn" data-proj="flat_2d" aria-pressed="false" onclick="selectSpatialProjectionView('flat_2d')" title="2D Orthographic Schematic (unobstructed hierarchy &amp; box selection)">2D</button>
+          <button type="button" id="nav-proj-25d-btn" class="proj-seg-btn" data-proj="iso_25d" aria-pressed="false" onclick="selectSpatialProjectionView('iso_25d')" title="2.5D Elevation (vertical architecture tiers over ground footprints)">2.5D</button>
+          <button type="button" id="nav-proj-3d-btn" class="proj-seg-btn" data-proj="orbit_3d" aria-pressed="false" onclick="selectSpatialProjectionView('orbit_3d')" title="3D Volumetric Cloud (multi-axis exploration for dense clusters)">3D</button>
+        </div>
+        <button type="button" id="toggle-dataset-sidebar-btn" onclick="toggleDatasetSidebar()" style="border-color:var(--purple);color:#E9D5FF;">🌲 Datasets</button>
+        <a href="/world-map" style="text-decoration:none;font-size:0.71rem;font-weight:700;color:var(--cyan);padding:0.2rem 0.45rem;border:1px solid rgba(56,189,248,0.4);border-radius:6px;background:#0F172A;">↗ Full Spatial View</a>
+        <button type="button" onclick="enterSelectedBoxLayer()">↘ Dive [Q]</button>
+        <button type="button" onclick="ascendBoxLayer()">⬆ Ascend [W]</button>
+        <button type="button" onclick="resetToRootLayer()">⌂ Root [L0]</button>
       </div>
     </div>
 
     <!-- CROSS-LAYER UPSTREAM / DOWNSTREAM CONNECTION RIBBON -->
     <div id="rts-connection-ribbon" style="display:flex;align-items:center;gap:0.4rem;flex-wrap:wrap;font-size:0.71rem;color:var(--muted);"></div>
+
+    <!-- 7-LEVEL KNOWLEDGE GRAPH BREAKDOWN RIBBON (PROJECT -> CONTRACT) -->
+    <div id="graph-level-breakdown-bar" aria-label="7-Level Knowledge Graph Breakdown"></div>
+
+    <!-- 6-COLOR REAL-SIGNAL TACTICAL STATUS RIBBON (PORTED FROM SWARM-MEMORY HUD) -->
+    <div id="tactical-6color-ribbon" aria-label="6-Color Tactical Status Filter Ribbon"></div>
+
+    <!-- HONEST FULL-TRUTH DATA STATUS BANNER (ONLY VISIBLE WHEN LIVE TRUTH SOURCE IS MISSING) -->
+    <div id="truth-status-banner" role="alert" style="display:none;"></div>
+    <div id="brain-auth-banner" role="region" aria-label="Sign-in required data sources" style="display:none;"></div>
 
     <!-- NON-BLOCKING NANOMACHINE SWARM ABILITY CASTING & ROLLING MU/SIGMA TIMEOUT/BACKOFF HUD -->
     <section id="nanomachine-swarm-hud" aria-label="Nanomachine Swarm Non-Blocking Ability Casting and Statistical Timeout HUD">
@@ -2021,9 +2748,136 @@ def render_standalone_browser_html(default_api_base: str = "", dataset: dict[str
       </div>
     </section>
 
+    <!-- OPTIONAL ENV-DRIVEN SWARM C2, DDR4 RAMCACHE & LAUNCHPAD PANEL -->
+    <section id="opscryer-swarm-c2-panel" aria-label="Swarm C2 RAMCache and Launchpad Panel">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:0.5rem;flex-wrap:wrap;">
+        <div style="display:flex;align-items:center;gap:0.45rem;flex-wrap:wrap;">
+          <strong style="color:var(--green);">🧠 Swarm C2, DDR4 RAMCache &amp; Launchpad</strong>
+          <span class="badge" id="swarm-c2-status-badge" style="border-color:var(--cyan);color:var(--cyan);">Standalone (toggleable via ⚙️ Panels)</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:0.35rem;flex-wrap:wrap;">
+          <div id="swarm-c2-links-strip" style="display:flex;gap:0.3rem;flex-wrap:wrap;"></div>
+          <button type="button" id="swarm-c2-refresh-btn" onclick="refreshSwarmC2Panel()">🔄 Refresh C2</button>
+        </div>
+      </div>
+      <div class="swarm-c2-grid" id="swarm-c2-cards">
+        <div class="swarm-c2-card"><strong>RAMCache &amp; ZFS Checkpoint</strong><div style="color:var(--muted);">Configure OPSCRYER_SWARM_API_URL to connect headless swarm-memory.</div></div>
+      </div>
+    </section>
+
     <!-- THE ENCAPSULATED BOXES FOR THE ACTIVE LAYER -->
     <div id="browser-children-list" aria-label="Encapsulated Layer Boxes"></div>
+
+    <!-- CLOSE-UP 3-COLUMN LOCAL LINKS GRAPH VIEW (ANCESTOR SPINE | FOCAL HUB | LOCAL NEIGHBORS & CHILDREN) -->
+    <section id="inline-local-links-stage" aria-label="Close-Up Local Links Graph View">
+      <svg id="local-links-svg-overlay" aria-hidden="true"></svg>
+      <div class="local-links-grid">
+        <div class="local-links-col">
+          <div class="local-links-col-title">↖ Ancestor Spine &amp; Inbound Links</div>
+          <div id="local-links-left-col" style="display:flex;flex-direction:column;gap:0.35rem;"></div>
+        </div>
+        <div class="local-links-focal-card" id="local-links-center-col">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:0.4rem;flex-wrap:wrap;">
+            <span class="badge" id="local-links-focal-level-badge" style="border-color:var(--cyan);color:var(--cyan);">📦 PROJECT</span>
+            <span class="badge" id="local-links-focal-status-badge" style="border-color:var(--green);color:var(--green);">NOMINAL</span>
+          </div>
+          <h3 id="local-links-focal-title" style="margin:0;font-size:1rem;color:#F8FAFC;">Select a node</h3>
+          <p id="local-links-focal-summary" style="margin:0;font-size:0.76rem;color:var(--muted);"></p>
+          <div>
+            <div style="font-size:0.65rem;font-weight:800;color:var(--amber);margin-bottom:0.25rem;text-transform:uppercase;">7-Level Neighborhood Breakdown (Click to Filter)</div>
+            <div id="local-links-focal-level-stats" class="kg-level-stats-row"></div>
+          </div>
+          <div class="local-links-tech-dock" id="local-links-tech-inspector"></div>
+        </div>
+        <div class="local-links-col">
+          <div class="local-links-col-title">↘ Direct Children &amp; Outbound Links</div>
+          <div id="local-links-right-col" style="display:flex;flex-direction:column;gap:0.35rem;"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- INLINE 2D / 2.5D / 3D SPATIAL KNOWLEDGE GRAPH VIEW -->
+    <section id="inline-world-map-stage" aria-label="2D / 2.5D / 3D Spatial Knowledge Graph">
+      <div class="inline-wm-toolbar">
+        <div style="display:flex;align-items:center;gap:0.35rem;flex-wrap:wrap;">
+          <select id="inline-wm-layout-mode" aria-label="Spatial Grouping">
+            <option value="unit_type">Group: By Node Type</option>
+            <option value="graph_layers">Group: 7-Level Stack (Project → Contract)</option>
+            <option value="domain_squads">Group: By Ecosystem Domain</option>
+            <option value="cloud_3d">Group: Orbital Constellation</option>
+          </select>
+          <div id="inline-wm-proj-toolbar" class="proj-segmented-bar" role="toolbar" focusgroup="toolbar wrap" aria-label="Spatial Projection Mode" aria-controls="inline-wm-canvas">
+            <div role="group" aria-label="Dimensions" style="display:inline-flex;gap:2px;">
+              <button type="button" class="proj-seg-btn" data-proj="flat_2d" aria-pressed="false" title="Orthographic flat schematic for dependency audits &amp; exact box selection">2D Schematic</button>
+              <button type="button" class="proj-seg-btn" data-proj="iso_25d" aria-pressed="true" title="Elevated architectural plane showing tier height anchored to ground sectors">2.5D Elevation</button>
+              <button type="button" class="proj-seg-btn" data-proj="orbit_3d" aria-pressed="false" title="Spherical Z-depth cloud for dense hub exploration &amp; multi-angle orbit">3D Volumetric</button>
+            </div>
+          </div>
+          <select id="inline-wm-projection-mode" aria-label="Spatial Projection">
+            <option value="iso_25d">Projection: 2.5D Elevation</option>
+            <option value="flat_2d">Projection: 2D Schematic</option>
+            <option value="orbit_3d">Projection: 3D Volumetric</option>
+          </select>
+          <button type="button" interestfor="inline-wm-proj-guide-tip" popovertarget="inline-wm-proj-guide-tip" popovertargetaction="show" aria-expanded="false" aria-label="Projection mode guide" style="border-color:var(--muted);color:var(--cyan);">? Guide</button>
+          <div id="inline-wm-proj-guide-tip" class="anchored-guide-tip" popover="hint" role="tooltip">
+            <strong style="color:var(--amber);">When to use each projection (same dataset):</strong>
+            <div style="margin-top:0.25rem;"><strong>2D Schematic:</strong> Flat orthographic view for unobstructed dependency audits &amp; exact marquee selection.</div>
+            <div><strong>2.5D Elevation:</strong> Tilted architectural elevation showing vertical plane hierarchy anchored onto ground sectors.</div>
+            <div><strong>3D Volumetric:</strong> Multi-axis orbital volume for untangling dense multi-domain hubs (Alt/Right-Drag or Q/E).</div>
+          </div>
+          <button type="button" id="inline-wm-open-forge-btn" style="border-color:var(--amber);color:var(--amber);">🧩 Node Studio</button>
+          <button type="button" id="inline-wm-scale-600-btn">600 Nodes</button>
+          <button type="button" id="inline-wm-fit-btn">Fit View</button>
+          <button type="button" id="inline-wm-isolate-btn">Isolate</button>
+        </div>
+        <div style="display:flex;align-items:center;gap:0.4rem;flex-wrap:wrap;">
+          <span class="fps-badge" id="inline-wm-fps-pill">⚡ 60 FPS</span>
+          <a href="/world-map" style="text-decoration:none;font-size:0.7rem;font-weight:700;color:var(--cyan);">↗ Open Full Spatial Portal</a>
+        </div>
+      </div>
+      <div class="proj-relevance-strip">
+        <span id="inline-wm-proj-relevance" role="status">2.5D Architectural Elevation — Best for reading vertical architecture tiers anchored cleanly onto ground sectors.</span>
+        <span style="color:var(--muted);">Same active dataset across 2D, 2.5D &amp; 3D</span>
+      </div>
+      <div class="inline-wm-canvas-wrap">
+        <canvas id="inline-wm-canvas" aria-label="Inline 2D / 2.5D / 3D Spatial Knowledge Graph Canvas"></canvas>
+      </div>
+      <div class="inline-wm-hud-strip">
+        <span id="inline-wm-status" style="color:var(--cyan);font-weight:700;">Ready • Drag Marquee • Shift/Ctrl/Alt Click • [Alt] Peek</span>
+        <div id="inline-wm-group-tabs" style="display:flex;align-items:center;gap:0.22rem;flex-wrap:wrap;"></div>
+        <div style="display:flex;align-items:center;gap:0.45rem;flex-wrap:wrap;">
+          <label><input type="checkbox" id="inline-wm-ov-health" checked="checked" /> Vitals</label>
+          <label><input type="checkbox" id="inline-wm-ov-children" checked="checked" /> Child Pips</label>
+          <label><input type="checkbox" id="inline-wm-ov-beams" checked="checked" /> Beams</label>
+          <label><input type="checkbox" id="inline-wm-ov-alerts" checked="checked" /> Alerts</label>
+        </div>
+      </div>
+      <div id="inline-wm-group-grid" aria-label="Selected Squad Units"></div>
+    </section>
   </main>
+
+  <!-- COLLAPSIBLE NORMALIZED DATASET TREE & 3-TOOL SELF-DOGFOOD SETTINGS SIDEBAR -->
+  <aside id="dataset-tree-sidebar" aria-label="Dataset Tree Settings Sidebar">
+    <div class="ds-sidebar-header">
+      <strong style="color:var(--cyan);font-size:0.79rem;">🌲 Dataset Tree Settings</strong>
+      <button type="button" onclick="toggleDatasetSidebar(false)" style="border-color:var(--muted);color:var(--muted);padding:0.12rem 0.42rem;">✕</button>
+    </div>
+    <span class="badge" id="dataset-tree-stats" style="border-color:var(--cyan);color:var(--cyan);align-self:flex-start;">0/0 active • 0ms mask</span>
+    <label class="ds-dogfood-toggle">
+      <input type="checkbox" id="ds-toggle-dogfood-chk" onchange="toggleDogfoodDataset(this.checked)" />
+      <span>🐕 Dogfood 3-Tool Suite (opscryer + brain + meshworks)</span>
+    </label>
+    <div class="ds-sidebar-controls">
+      <button type="button" id="ds-select-all-btn" onclick="if(window.datasetTreeStore)window.datasetTreeStore.setAll(true)" style="padding:0.16rem 0.45rem;font-size:0.68rem;">☑ All</button>
+      <button type="button" id="ds-select-none-btn" onclick="if(window.datasetTreeStore)window.datasetTreeStore.setAll(false)" style="padding:0.16rem 0.45rem;font-size:0.68rem;">☐ None</button>
+      <button type="button" id="ds-focus-dogfood-btn" onclick="focusDogfoodSuiteRoot()" style="padding:0.16rem 0.45rem;font-size:0.68rem;border-color:var(--green);color:#86EFAC;">🎯 Focus Suite</button>
+      <button type="button" id="ds-run-eval-btn" onclick="runDogfoodSelfEval()" style="padding:0.16rem 0.45rem;font-size:0.68rem;border-color:var(--amber);color:var(--amber);">🧪 Self-Eval</button>
+    </div>
+    <input type="search" id="dataset-tree-search" placeholder="Filter datasets, repos, 7 levels, nodes..." aria-label="Filter Dataset Tree" oninput="onDatasetTreeSearchInput(this.value)" />
+    <div id="dataset-eval-output" aria-live="polite"></div>
+    <div id="dataset-tree-list" role="tree" aria-label="Dataset Hierarchy Checklist"></div>
+  </aside>
+  </div>
 
   <!-- COLLAPSIBLE TACTICAL TOOLS DRAWER (PATHFINDER, JEV SIMULATOR, GRAPH Q&A) -->
   <section class="qa-dock" id="rts-tools-drawer">
@@ -2069,22 +2923,23 @@ def render_standalone_browser_html(default_api_base: str = "", dataset: dict[str
     <!-- LEFT: TACTICAL LAYER MINIMAP -->
     <section class="hud-perimeter-box" id="rts-minimap-box">
       <div style="display:flex;justify-content:space-between;align-items:center;">
-        <span style="font-size:0.68rem;font-weight:800;color:var(--amber);">🗺️ TACTICAL MINIMAP</span>
-        <button type="button" onclick="resetToRootLayer()" style="padding:0.15rem 0.45rem;font-size:0.66rem;">🏠 Root L0</button>
+        <span style="font-size:0.68rem;font-weight:800;color:var(--amber);">VIEWPORT MINIMAP</span>
+        <button type="button" onclick="resetToRootLayer()" style="padding:0.15rem 0.45rem;font-size:0.66rem;">⌂ Root L0</button>
       </div>
       <div id="rts-minimap-blips" style="display:flex;flex-wrap:wrap;gap:0.25rem;padding:0.3rem;background:#030712;border:1px solid #1E293B;border-radius:6px;min-height:60px;max-height:86px;overflow-y:auto;align-content:flex-start;"></div>
+      <canvas id="inline-wm-minimap" width="220" height="84" style="display:none;width:100%;height:84px;border-radius:6px;border:1px solid #334155;cursor:pointer;"></canvas>
     </section>
 
     <!-- CENTER: WIREFRAME PORTRAIT + VITALS + 6 CONSISTENT STAT SLOTS -->
     <section class="hud-perimeter-box" id="rts-unit-console">
       <div class="unit-console-layout">
         <div class="wireframe-portrait" id="rts-portrait-frame">
-          <div id="rts-portrait-icon" style="font-size:1.85rem;line-height:1;">🏰</div>
-          <div id="rts-portrait-archetype" style="font-size:0.66rem;font-weight:800;color:var(--cyan);margin-top:0.2rem;">CITADEL_ROOT</div>
+          <div id="rts-portrait-icon" style="font-size:1.85rem;line-height:1;">◈</div>
+          <div id="rts-portrait-archetype" style="font-size:0.66rem;font-weight:800;color:var(--cyan);margin-top:0.2rem;">SYSTEM_ROOT</div>
           <div class="box-vital-track" style="margin-top:0.35rem;">
             <div class="box-vital-fill" id="rts-portrait-hp-bar" style="width:98%;"></div>
           </div>
-          <div id="rts-portrait-vital-text" style="font-size:0.63rem;color:var(--green);margin-top:0.15rem;">HP/SLA: 98%</div>
+          <div id="rts-portrait-vital-text" style="font-size:0.63rem;color:var(--green);margin-top:0.15rem;">Health / SLA: 98%</div>
         </div>
 
         <div style="display:flex;flex-direction:column;gap:0.35rem;min-width:0;">
@@ -2098,9 +2953,12 @@ def render_standalone_browser_html(default_api_base: str = "", dataset: dict[str
 
           <div id="live-metrics-status" role="status" aria-live="polite" style="font-size:0.72rem;color:var(--green);">Telemetry: Live Poll OFF</div>
 
+          <!-- 7-LEVEL SELECTION BREAKDOWN STATS IN MIDDLE UNIT CONSOLE -->
+          <div id="rts-selection-level-stats" class="kg-level-stats-row" aria-label="Selected Node 7-Level Breakdown"></div>
+
           <!-- 6 CONSISTENT SLOTS AROUND THE OUTSIDE -->
           <div class="slot-grid-6">
-            <div class="stat-slot"><div class="stat-slot-label">1. ARCHETYPE</div><div class="stat-slot-value" id="rts-slot-1-class">Command Citadel</div></div>
+            <div class="stat-slot"><div class="stat-slot-label">1. NODE TYPE</div><div class="stat-slot-value" id="rts-slot-1-class">Platform Architecture Root</div></div>
             <div class="stat-slot"><div class="stat-slot-label">2. DOMAIN / OWNER</div><div class="stat-slot-value" id="rts-slot-2-commander">COMPANY_ORG</div></div>
             <div class="stat-slot"><div class="stat-slot-label">3. PRIMARY VITAL</div><div class="stat-slot-value" id="rts-slot-3-vital">98% Ready</div></div>
             <div class="stat-slot"><div class="stat-slot-label">4. UPKEEP / STATUS</div><div class="stat-slot-value" id="rts-slot-4-upkeep">Nominal</div></div>
@@ -2111,22 +2969,102 @@ def render_standalone_browser_html(default_api_base: str = "", dataset: dict[str
       </div>
     </section>
 
-    <!-- RIGHT: 3x3 RTS COMMAND CARD -->
+    <!-- RIGHT: 3x3 QUICK COMMAND MATRIX -->
     <section class="hud-perimeter-box" id="rts-command-card-3x3">
-      <div style="font-size:0.68rem;font-weight:800;color:var(--amber);">⚔️ COMMAND CARD (HOTKEYS Q-C)</div>
+      <div style="font-size:0.68rem;font-weight:800;color:var(--amber);">⌨️ QUICK COMMANDS (HOTKEYS Q–C)</div>
       <div class="cmd-grid-3x3">
-        <button type="button" class="cmd-card-btn" onclick="enterSelectedBoxLayer()"><strong>[Q] Enter</strong><span>Scroll In ↘</span></button>
-        <button type="button" class="cmd-card-btn" onclick="ascendBoxLayer()"><strong>[W] Ascend</strong><span>Scroll Out ↖</span></button>
+        <button type="button" class="cmd-card-btn" onclick="enterSelectedBoxLayer()"><strong>[Q] Enter</strong><span>Dive In ↘</span></button>
+        <button type="button" class="cmd-card-btn" onclick="ascendBoxLayer()"><strong>[W] Ascend</strong><span>Step Out ↖</span></button>
         <button type="button" class="cmd-card-btn" onclick="openSelectedPrimaryUrl()"><strong>[E] Control</strong><span>Open Link ↗</span></button>
         <button type="button" class="cmd-card-btn" onclick="openToolAndRun('path')"><strong>[A] Path</strong><span>BFS Trace</span></button>
         <button type="button" class="cmd-card-btn" onclick="openToolAndRun('jev')"><strong>[S] Jev Tree</strong><span>Ticket Check</span></button>
         <button type="button" class="cmd-card-btn" onclick="openToolAndRun('pack')"><strong>[D] Data Pack</strong><span>Load JSON</span></button>
         <button type="button" class="cmd-card-btn" onclick="openToolAndRun('qa')"><strong>[Z] Ask AI</strong><span>Graph Q&A</span></button>
         <button type="button" class="cmd-card-btn" onclick="toggleCurrencyDropdown('open_mrs')"><strong>[X] Open MRs</strong><span>Queue Menu</span></button>
-        <button type="button" class="cmd-card-btn" onclick="resetToRootLayer()"><strong>[C] Citadel</strong><span>Reset L0</span></button>
+        <button type="button" class="cmd-card-btn" onclick="resetToRootLayer()"><strong>[C] Root</strong><span>Reset L0</span></button>
       </div>
     </section>
   </footer>
+
+  <dialog id="wm-inline-forge-dialog" closedby="any" aria-labelledby="wm-unit-forge-title">
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <h2 id="wm-unit-forge-title" style="margin:0;font-size:1rem;color:var(--amber);">🧩 Node Type &amp; Vector Icon Studio</h2>
+      <form method="dialog"><button type="submit" value="cancel">✕ Close</button></form>
+    </div>
+    <div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;">
+      <canvas id="wm-forge-preview-canvas" width="96" height="96" style="border:1px solid var(--cyan);border-radius:8px;background:#020617;"></canvas>
+      <div style="flex:1;display:grid;grid-template-columns:1fr 1fr;gap:0.4rem;">
+        <label style="font-size:0.72rem;">Type ID <input id="wm-forge-type-id" type="text" value="custom_squad_unit" autofocus="autofocus" style="width:100%;" /></label>
+        <label style="font-size:0.72rem;">Display Name <input id="wm-forge-display-name" type="text" value="Custom Squad Unit" style="width:100%;" /></label>
+        <label style="font-size:0.72rem;">Primary Hex <input id="wm-forge-primary" type="text" value="#38BDF8" style="width:100%;" /></label>
+        <label style="font-size:0.72rem;">Accent Hex <input id="wm-forge-accent" type="text" value="#F59E0B" style="width:100%;" /></label>
+        <label style="font-size:0.72rem;">Formation <select id="wm-forge-formation" style="width:100%;"><option value="hex">Hex</option><option value="ring">Ring</option><option value="grid">Grid</option><option value="orbital">Orbital</option></select></label>
+        <label style="font-size:0.72rem;">Elevation Z <input id="wm-forge-z-elev" type="number" min="0" max="200" value="44" style="width:100%;" /></label>
+      </div>
+    </div>
+    <label style="font-size:0.72rem;">Match Node Kinds (CSV) <input id="wm-forge-match-kinds" type="text" value="engineering_project" style="width:100%;" /></label>
+    <div style="display:flex;align-items:center;gap:0.4rem;flex-wrap:wrap;">
+      <strong style="font-size:0.72rem;color:var(--cyan);">Vector Layers:</strong>
+      <select id="wm-forge-layer-shape">
+        <option value="hex">Hex</option><option value="shield">Shield</option><option value="star">Star</option>
+        <option value="diamond">Diamond</option><option value="ring">Ring</option><option value="circle">Circle</option>
+        <option value="triangle">Triangle</option><option value="cross">Cross</option><option value="pill">Pill</option>
+      </select>
+      <input id="wm-forge-layer-radius" type="number" min="4" max="30" value="14" style="width:62px;" />
+      <input id="wm-forge-layer-color" type="text" value="#22C55E" style="width:82px;" />
+      <button type="button" id="wm-forge-add-layer-btn">+ Add Layer</button>
+    </div>
+    <div id="wm-forge-layer-list" style="display:flex;align-items:center;gap:0.35rem;flex-wrap:wrap;"></div>
+    <label style="font-size:0.72rem;">Optional Custom SVG (Strictly Geometry-Sanitized)
+      <textarea id="wm-forge-svg-input" rows="3" style="width:100%;" placeholder="<svg viewBox='0 0 64 64'><path d='M32 6 L58 54 L6 54 Z' fill='#38BDF8'/></svg>"></textarea>
+    </label>
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <label style="font-size:0.72rem;"><input type="checkbox" id="wm-forge-assign-selected" checked="checked" /> Assign to currently selected units</label>
+      <button type="button" id="wm-forge-save-btn" style="border-color:var(--green);color:var(--green);">💾 Save &amp; Bake Sprite</button>
+    </div>
+    <div id="wm-forge-error" role="status" style="font-size:0.72rem;color:var(--amber);"></div>
+  </dialog>
+__WORKSPACE_LAYOUT_DIALOG__
+  <dialog id="brain-auth-dialog" aria-labelledby="brain-auth-dialog-title">
+    <form method="dialog" onsubmit="submitBrainAuthDialog(event)" style="display:flex;flex-direction:column;gap:0.55rem;">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:0.5rem;">
+        <strong id="brain-auth-dialog-title" style="color:var(--cyan);font-size:0.84rem;">🔐 Connect User-Delegated Credentials</strong>
+        <button type="button" onclick="var d=$('brain-auth-dialog');if(d&&d.close)d.close();" aria-label="Close sign-in dialog" style="padding:0.15rem 0.45rem;border-color:var(--muted);color:var(--muted);">✕</button>
+      </div>
+      <div id="brain-auth-dialog-desc" style="color:#CBD5E1;line-height:1.4;">Sign in to unlock private operational data sources for your current browser session.</div>
+      <button type="button" id="brain-auth-open-login-btn" style="display:none;border-color:var(--cyan);color:var(--cyan);align-self:flex-start;">↗ Open Provider Sign-In</button>
+      <label style="display:flex;flex-direction:column;gap:0.2rem;font-size:0.72rem;color:var(--muted);">
+        <span>Provider / Harvester Key</span>
+        <input id="brain-auth-provider-input" type="text" value="gitlab_direct" required="required" style="padding:0.35rem 0.5rem;border-radius:6px;border:1px solid #334155;background:#020617;color:#F8FAFC;font-size:0.74rem;" />
+      </label>
+      <label style="display:flex;flex-direction:column;gap:0.2rem;font-size:0.72rem;color:var(--muted);">
+        <span>Session Token / Personal Access Token</span>
+        <input id="brain-auth-token-input" type="password" autocomplete="off" placeholder="Paste user-scoped access token..." required="required" style="padding:0.35rem 0.5rem;border-radius:6px;border:1px solid #334155;background:#020617;color:#F8FAFC;font-size:0.74rem;" />
+      </label>
+      <div style="font-size:0.69rem;color:var(--muted);">Stored only in this tab's sessionStorage; never shared across users.</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:0.4rem;flex-wrap:wrap;margin-top:0.2rem;">
+        <button type="button" onclick="clearBrainDelegatedAuth()" style="border-color:var(--amber);color:var(--amber);">Sign Out All</button>
+        <div style="display:flex;gap:0.35rem;">
+          <button type="button" onclick="var d=$('brain-auth-dialog');if(d&&d.close)d.close();" style="border-color:var(--muted);color:var(--muted);">Cancel</button>
+          <button type="submit" style="border-color:var(--green);color:var(--green);font-weight:800;">Connect &amp; Refresh</button>
+        </div>
+      </div>
+    </form>
+  </dialog>
+  <button type="button" id="ask-brain-fab" aria-expanded="false" aria-controls="ask-brain-drawer" title="Open or close the Ask Brain query box" onclick="toggleAskBrainDrawer()">🧠 Ask Brain</button>
+  <aside id="ask-brain-drawer" data-open="false" aria-label="Ask Brain Quick Query Box">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:0.5rem;">
+      <strong style="color:var(--cyan);font-size:0.8rem;">🧠 Ask Brain (Live Graph &amp; Links)</strong>
+      <button type="button" onclick="toggleAskBrainDrawer(false)" aria-label="Close Ask Brain box" style="padding:0.15rem 0.45rem;border-color:var(--muted);color:var(--muted);">✕ Close</button>
+    </div>
+    <form onsubmit="submitAskBrainDrawer(event)" style="display:flex;gap:0.35rem;">
+      <input id="ask-brain-input" type="text" placeholder="Ask about a service, alert, dashboard, or repo..." aria-label="Question for Central Brain" style="flex:1;padding:0.35rem 0.5rem;border-radius:6px;border:1px solid #334155;background:#020617;color:#F8FAFC;font-size:0.74rem;" />
+      <button type="submit" style="border-color:var(--cyan);color:var(--cyan);font-weight:800;">Ask</button>
+    </form>
+    <div id="ask-brain-answer" role="status" aria-live="polite" style="color:var(--muted);line-height:1.4;">Ask a question to search live services, metrics, dashboards, and incident processes.</div>
+    <div id="ask-brain-quick-links" class="ask-brain-links-row"></div>
+    <div id="ask-brain-matches" class="ask-brain-links-row"></div>
+  </aside>
 
   <script>
     const STANDALONE_DEMO_DATASET = __DEMO_JSON__;
@@ -2280,7 +3218,7 @@ def render_standalone_browser_html(default_api_base: str = "", dataset: dict[str
           return {archetype_id: 'K8S_INGRESS', archetype_title: 'K8s TLS Ingress Gateway', crest_icon: '🌐', border_color: '#F59E0B', vital_label: 'TLS Route', vital_pct: 100};
         }
         if (ARCHETYPE_MAP[kind]) return ARCHETYPE_MAP[kind];
-        return {archetype_id: 'GUILD_TEAM', archetype_title: 'Engineering Garrison', crest_icon: '*', border_color: '#38BDF8', vital_label: 'Readiness', vital_pct: 94};
+        return {archetype_id: 'ENGINEERING_TEAM', archetype_title: 'Engineering Team', crest_icon: '⬢', border_color: '#38BDF8', vital_label: 'Readiness', vital_pct: 94};
       },
 
       renderCurrenciesBar() {
@@ -2321,34 +3259,69 @@ def render_standalone_browser_html(default_api_base: str = "", dataset: dict[str
 
       async loadCatalog() {
         const badge = $('adapter-mode-badge');
+        const truthBanner = $('truth-status-banner');
+        if (truthBanner && truthBanner.style) truthBanner.style.display = 'none';
         if (this.mode === 'STANDALONE_MOCK') {
           this.catalog = STANDALONE_DEMO_DATASET;
           badge.textContent = 'STANDALONE_MOCK';
+          if (typeof renderBrainAuthBanner === 'function') renderBrainAuthBanner([], false);
           this.rebuildFastIndex();
+          if (typeof window !== 'undefined' && typeof window.syncPrimaryCatalogToDatasetStore === 'function') window.syncPrimaryCatalogToDatasetStore(this.catalog);
+          if (typeof window !== 'undefined' && typeof window.syncInlineWorldMapCatalog === 'function') window.syncInlineWorldMapCatalog();
           return;
         }
         if (this.mode === 'CUSTOM_JSON_PACK') {
           badge.textContent = 'CUSTOM_JSON_PACK';
+          if (typeof renderBrainAuthBanner === 'function') renderBrainAuthBanner([], false);
           this.rebuildFastIndex();
+          if (typeof window !== 'undefined' && typeof window.syncPrimaryCatalogToDatasetStore === 'function') window.syncPrimaryCatalogToDatasetStore(this.catalog);
+          if (typeof window !== 'undefined' && typeof window.syncInlineWorldMapCatalog === 'function') window.syncInlineWorldMapCatalog();
           return;
         }
         try {
           const scopeParam = this.currentScope ? ('?scope=' + encodeURIComponent(this.currentScope)) : '';
-          const res = await fetch((this.apiBase || '') + '/api/v1/graph/catalog' + scopeParam, {cache: 'no-store'});
+          const reqHeaders = typeof buildBrainAuthHeaders === 'function' ? buildBrainAuthHeaders() : {};
+          const res = await fetch((this.apiBase || '') + '/api/v1/graph/catalog' + scopeParam, {cache: 'no-store', headers: reqHeaders});
           const data = await res.json();
-          if (data && Array.isArray(data.nodes)) {
+          if (res.ok && data && Array.isArray(data.nodes)) {
             this.catalog = data;
-            if (this.catalog && this.catalog.ai_invoked === false) {
+            if (typeof renderBrainAuthBanner === 'function') {
+              renderBrainAuthBanner(data.auth_required_sources || [], Boolean(data.user_scoped));
+            }
+            if (this.catalog && this.catalog.truth_mode && this.catalog.nodes.length === 0) {
+              badge.textContent = 'TRUTH_NO_LIVE_DATA';
+              if (truthBanner && truthBanner.style) {
+                truthBanner.style.display = 'block';
+                truthBanner.textContent = '⚠️ Full-Truth Mode Active: ' + String(data.error || 'No live Knowledge Graph nodes returned by backend (synthetic fallback disabled).');
+              }
+            } else if (this.catalog && this.catalog.ai_invoked === false) {
               badge.textContent = '🧠 LIVE BRAIN KG (ZERO-AI) • ' + (this.catalog.scope_id || this.currentScope || 'default') + ' • ' + String(this.catalog.ecosystem_revision || '').slice(0, 14);
+            } else if (this.catalog && this.catalog.truth_mode) {
+              badge.textContent = '✅ FULL-TRUTH KG (' + this.catalog.nodes.length + ' NODES)';
             } else {
               badge.textContent = 'REMOTE_BACKEND_API';
             }
+          } else {
+            throw new Error(String((data && data.error) || ('HTTP ' + res.status)));
           }
         } catch (err) {
-          this.catalog = STANDALONE_DEMO_DATASET;
-          badge.textContent = 'FALLBACK_DEMO';
+          const params = new URLSearchParams((window.location && window.location.search) || '');
+          const allowDemoFallback = !(window.location && window.location.hostname) || params.get('demo') === '1' || params.get('mode') === 'mock';
+          if (allowDemoFallback) {
+            this.catalog = STANDALONE_DEMO_DATASET;
+            badge.textContent = 'FALLBACK_DEMO';
+          } else {
+            this.catalog = {nodes: [], edges: [], rts_currencies: [], truth_mode: true, source: 'live_backend_unreachable', error: String((err && err.message) || 'Backend unreachable')};
+            badge.textContent = 'TRUTH_BACKEND_UNREACHABLE';
+            if (truthBanner && truthBanner.style) {
+              truthBanner.style.display = 'block';
+              truthBanner.textContent = '⚠️ Live Truth Source Unreachable: ' + String((err && err.message) || 'fetch failed') + ' — synthetic demo data is NOT substituted (append ?demo=1 only for offline demo preview).';
+            }
+          }
         }
         this.rebuildFastIndex();
+        if (typeof window !== 'undefined' && typeof window.syncPrimaryCatalogToDatasetStore === 'function') window.syncPrimaryCatalogToDatasetStore(this.catalog);
+        if (typeof window !== 'undefined' && typeof window.syncInlineWorldMapCatalog === 'function') window.syncInlineWorldMapCatalog();
       },
 
       validateCatalogClientSide(c) {
@@ -2615,7 +3588,22 @@ def render_standalone_browser_html(default_api_base: str = "", dataset: dict[str
         $('browser-focal-title').textContent = String(node.label) + ' (' + String(node.id) + ')';
         $('browser-focal-summary').textContent = String(node.summary || '');
         const u = node.rts_ai_unit_telemetry;
-        $('browser-focal-telemetry').textContent = u ? ('AI Unit: ' + String(u.handle || '') + ' [' + String((u.behavioral_health && u.behavioral_health.state) || 'OK') + ']') : '';
+        const m = (node.metrics && typeof node.metrics === 'object') ? node.metrics : null;
+        const metricBits = [];
+        if (m) {
+          if (m.ready_replicas != null && m.desired_replicas != null) metricBits.push('Pods: ' + m.ready_replicas + '/' + m.desired_replicas);
+          if (m.cpu_pct != null) metricBits.push('CPU: ' + m.cpu_pct + '%');
+          if (m.mem_pct != null) metricBits.push('RAM: ' + m.mem_pct + '%');
+          if (m.gpu_count) metricBits.push('GPUs: ' + m.gpu_count);
+          if (Array.isArray(m.failing_reasons) && m.failing_reasons.length) metricBits.push('FAULTS: ' + m.failing_reasons.join(', '));
+          if (m.latest_alert) metricBits.push('ALERT: ' + m.latest_alert);
+          if (m.pipeline_status) metricBits.push('CI: ' + m.pipeline_status);
+          if (m.open_mrs != null && m.open_mrs > 0) metricBits.push('Open MRs: ' + m.open_mrs);
+        }
+        const telemetryText = metricBits.length
+          ? metricBits.join(' • ')
+          : (u ? ('AI Unit: ' + String(u.handle || '') + ' [' + String((u.behavioral_health && u.behavioral_health.state) || 'OK') + ']') : '');
+        $('browser-focal-telemetry').textContent = telemetryText;
         $('rts-portrait-icon').textContent = String(arch.crest_icon || '*');
         $('rts-portrait-archetype').textContent = String(arch.archetype_id || 'OBJECT');
         $('rts-portrait-hp-bar').style.width = String(arch.vital_pct || 95) + '%';
@@ -2623,22 +3611,58 @@ def render_standalone_browser_html(default_api_base: str = "", dataset: dict[str
         $('rts-slot-1-class').textContent = String(arch.archetype_title || node.kind || 'Unit');
         $('rts-slot-2-commander').textContent = String(node.domain || 'company_org').toUpperCase();
         $('rts-slot-3-vital').textContent = String(arch.vital_pct || 95) + '%';
-        $('rts-slot-4-upkeep').textContent = String(node.summary || 'Nominal').slice(0, 40);
+        $('rts-slot-4-upkeep').textContent = String(telemetryText || node.status || node.summary || 'Nominal').slice(0, 44);
         $('rts-slot-5-encapsulated').textContent = childCount + ' Child Boxes';
-        $('rts-slot-6-control').textContent = String(node.primary_url || 'Local');
+        const slot6 = $('rts-slot-6-control');
+        const primaryUrlStr = String(node.primary_url || '').trim();
+        const isClickablePrimary = primaryUrlStr.indexOf('http://') === 0 || primaryUrlStr.indexOf('https://') === 0 || (primaryUrlStr.indexOf('/') === 0 && primaryUrlStr.indexOf('//') !== 0);
+        if (slot6) {
+          if (isClickablePrimary && typeof slot6.replaceChildren === 'function' && typeof mk === 'function') {
+            const sBtn = mk('button');
+            sBtn.type = 'button';
+            sBtn.className = 'slot-link-btn';
+            sBtn.textContent = '↗ ' + primaryUrlStr;
+            sBtn.title = 'Open ' + primaryUrlStr;
+            sBtn.onclick = () => openUrlOrPortal(primaryUrlStr);
+            slot6.replaceChildren(sBtn);
+          } else {
+            slot6.textContent = primaryUrlStr || 'Local';
+          }
+        }
         const linksEl = $('browser-focal-links');
         if (linksEl) {
           linksEl.replaceChildren();
-          if (node.primary_url) {
-            linksEl.appendChild(this.makeNodeButton('↗ Open Portal / Control', String(node.primary_url), () => openUrlOrPortal(String(node.primary_url))));
+          const seenUrls = new Set();
+          const cpUrls = Array.isArray(node.control_plane_urls) ? node.control_plane_urls : [];
+          if (isClickablePrimary && primaryUrlStr !== '/api/v1/opscryer/graph') {
+            seenUrls.add(primaryUrlStr);
+            linksEl.appendChild(this.makeNodeButton('↗ Open Primary', primaryUrlStr.slice(0, 38), () => openUrlOrPortal(primaryUrlStr)));
           }
-          if (node.kind === 'ai_agent_unit' || String(node.id || '').startsWith('swarm-')) {
+          cpUrls.slice(0, 8).forEach(item => {
+            if (!item || !item.url) return;
+            const uStr = String(item.url).trim();
+            if (!uStr || seenUrls.has(uStr)) return;
+            const okScheme = uStr.indexOf('http://') === 0 || uStr.indexOf('https://') === 0 || (uStr.indexOf('/') === 0 && uStr.indexOf('//') !== 0);
+            if (!okScheme) return;
+            seenUrls.add(uStr);
+            const sysTag = String(item.system || 'link').toUpperCase();
+            linksEl.appendChild(this.makeNodeButton('↗ ' + String(item.label || sysTag).slice(0, 28), sysTag, () => openUrlOrPortal(uStr)));
+          });
+          const nanoswarmActive = typeof window !== 'undefined' && Array.isArray(window.OPSCRYER_ENABLED_PLUGINS) && window.OPSCRYER_ENABLED_PLUGINS.indexOf('nanoswarm') >= 0;
+          if (nanoswarmActive && (node.kind === 'ai_agent_unit' || String(node.id || '').startsWith('swarm-'))) {
             linksEl.appendChild(this.makeNodeButton('⚡ Cast Swarm Ability (μ/σ)', 'Non-Blocking HUD', () => toggleNanomachineSwarmHud(true)));
           }
         }
         this.renderConnectionRibbon(targetId);
         this.syncSelectedBoxVisual(targetId);
         syncUnifiedToolDockContext(targetId);
+        if (typeof renderSevenLevelAndTacticalBars === 'function') {
+          const selForStats = (activeCanvasView === 'world_map' && activeWorldMapSelectedIds.length) ? activeWorldMapSelectedIds : [targetId];
+          renderSevenLevelAndTacticalBars(selForStats);
+        }
+        if (typeof renderLocalLinksView === 'function' && activeCanvasView === 'local_links') {
+          renderLocalLinksView(targetId);
+        }
       },
 
       async selectNode(targetId, isBack) {
@@ -2913,7 +3937,7 @@ def render_standalone_browser_html(default_api_base: str = "", dataset: dict[str
         a.addEventListener('click', ev => {
           if (ev && (ev.ctrlKey || ev.metaKey || ev.shiftKey)) return;
           const href = a.getAttribute ? a.getAttribute('href') : '';
-          if (href && href.startsWith('/')) {
+          if (href && href.startsWith('/') && href !== '/world-map') {
             if (ev && typeof ev.preventDefault === 'function') ev.preventDefault();
             openIntegratedOpsTool(href, true);
           }
@@ -2933,6 +3957,183 @@ def render_standalone_browser_html(default_api_base: str = "", dataset: dict[str
       }
     }
 
+    const BRAIN_DELEGATED_STORAGE_KEY = 'opscryer.brain.delegatedTokens.v1';
+
+    function isSafeBrainLoginUrl(raw) {
+      const s = String(raw || '').trim();
+      if (!s) return false;
+      if (s.indexOf('/') === 0 && s.indexOf('//') !== 0) return true;
+      try {
+        const origin = (window && window.location && window.location.origin) ? window.location.origin : 'https://localhost';
+        const u = new URL(s, origin);
+        return (u.protocol === 'https:' || u.protocol === 'http:') && !u.username && !u.password;
+      } catch (_err) {
+        return false;
+      }
+    }
+
+    function readBrainDelegatedTokens() {
+      try {
+        if (typeof window === 'undefined' || !window.sessionStorage) return {};
+        const raw = window.sessionStorage.getItem(BRAIN_DELEGATED_STORAGE_KEY);
+        if (!raw) return {};
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+        const out = {};
+        Object.keys(parsed).forEach(k => {
+          const cleanK = String(k || '').trim().toLowerCase();
+          const cleanV = String(parsed[k] || '').trim();
+          if (/^[a-z0-9_.-]{1,64}$/.test(cleanK) && cleanV) out[cleanK] = cleanV;
+        });
+        return out;
+      } catch (_err) {
+        return {};
+      }
+    }
+
+    function writeBrainDelegatedTokens(tokenMap) {
+      try {
+        if (typeof window === 'undefined' || !window.sessionStorage) return;
+        const clean = {};
+        if (tokenMap && typeof tokenMap === 'object') {
+          Object.keys(tokenMap).forEach(k => {
+            const cleanK = String(k || '').trim().toLowerCase();
+            const cleanV = String(tokenMap[k] || '').trim();
+            if (/^[a-z0-9_.-]{1,64}$/.test(cleanK) && cleanV) clean[cleanK] = cleanV;
+          });
+        }
+        if (Object.keys(clean).length === 0) window.sessionStorage.removeItem(BRAIN_DELEGATED_STORAGE_KEY);
+        else window.sessionStorage.setItem(BRAIN_DELEGATED_STORAGE_KEY, JSON.stringify(clean));
+      } catch (_err) {
+      }
+    }
+
+    function buildBrainAuthHeaders() {
+      const toks = readBrainDelegatedTokens();
+      const keys = Object.keys(toks);
+      if (!keys.length) return {};
+      const payload = JSON.stringify(toks);
+      if (payload.length > 4096) return {};
+      return {'X-Brain-Delegated-Tokens': payload};
+    }
+
+    function renderBrainAuthBanner(sources, userScoped) {
+      const el = $('brain-auth-banner');
+      if (!el) return;
+      const list = Array.isArray(sources) ? sources.filter(Boolean) : [];
+      const activeTokens = readBrainDelegatedTokens();
+      const activeCount = Object.keys(activeTokens).length;
+      const hasSession = Boolean(userScoped) || activeCount > 0;
+      if (el.replaceChildren) el.replaceChildren();
+      if (list.length === 0 && !hasSession) {
+        if (el.style) el.style.display = 'none';
+        return;
+      }
+      if (el.style) el.style.display = 'flex';
+      const msgSpan = mk('span');
+      if (list.length > 0) {
+        const names = list.map(s => String(s.plugin || s.provider || 'source')).join(', ');
+        msgSpan.textContent = '🔐 Sign-in required to unlock private Brain data (' + names + ').';
+      } else {
+        msgSpan.textContent = '🔐 User-delegated session active (' + activeCount + ' provider).';
+      }
+      el.appendChild(msgSpan);
+      const actions = mk('div');
+      actions.style.cssText = 'display:flex;align-items:center;gap:0.35rem;flex-wrap:wrap;';
+      list.slice(0, 4).forEach(src => {
+        const btn = mk('button');
+        btn.type = 'button';
+        btn.textContent = 'Sign In (' + String(src.provider || src.plugin || 'source') + ')';
+        btn.style.cssText = 'border-color:var(--cyan);color:var(--cyan);font-weight:700;';
+        btn.onclick = () => openBrainAuthDialog(src);
+        actions.appendChild(btn);
+      });
+      if (hasSession) {
+        const outBtn = mk('button');
+        outBtn.type = 'button';
+        outBtn.textContent = 'Sign Out';
+        outBtn.style.cssText = 'border-color:var(--muted);color:var(--muted);';
+        outBtn.onclick = () => clearBrainDelegatedAuth();
+        actions.appendChild(outBtn);
+      }
+      el.appendChild(actions);
+    }
+
+    function openBrainAuthDialog(sourceInfo) {
+      const dlg = $('brain-auth-dialog');
+      const desc = $('brain-auth-dialog-desc');
+      const provInput = $('brain-auth-provider-input');
+      const tokInput = $('brain-auth-token-input');
+      const loginBtn = $('brain-auth-open-login-btn');
+      const info = (sourceInfo && typeof sourceInfo === 'object') ? sourceInfo : {};
+      const provKey = String(info.plugin || info.provider || 'gitlab_direct').trim();
+      if (provInput) provInput.value = provKey;
+      if (tokInput) tokInput.value = '';
+      if (desc) desc.textContent = String(info.message || ('Sign in to unlock ' + provKey + ' in your current browser session.'));
+      if (loginBtn) {
+        const loginUrl = String(info.login_url || '').trim();
+        if (isSafeBrainLoginUrl(loginUrl)) {
+          loginBtn.style.display = 'inline-flex';
+          loginBtn.onclick = () => openUrlOrPortal(loginUrl);
+        } else {
+          loginBtn.style.display = 'none';
+          loginBtn.onclick = null;
+        }
+      }
+      if (dlg && typeof dlg.showModal === 'function' && !dlg.open) dlg.showModal();
+      else if (dlg) dlg.setAttribute('open', 'open');
+      if (tokInput && typeof tokInput.focus === 'function') tokInput.focus();
+    }
+
+    async function refreshGraphAfterAuthChange() {
+      if (typeof loadUnifiedClusterAndSubsystemGraph === 'function' && SpatialGraphAdapter.mode === 'REMOTE_BACKEND_API') {
+        await loadUnifiedClusterAndSubsystemGraph(true);
+      } else if (SpatialGraphAdapter && typeof SpatialGraphAdapter.loadCatalog === 'function') {
+        await SpatialGraphAdapter.loadCatalog();
+      }
+    }
+
+    async function submitBrainAuthDialog(ev) {
+      if (ev && typeof ev.preventDefault === 'function') ev.preventDefault();
+      const provEl = $('brain-auth-provider-input');
+      const tokEl = $('brain-auth-token-input');
+      const dlg = $('brain-auth-dialog');
+      const prov = provEl ? String(provEl.value || '').trim().toLowerCase() : '';
+      const tok = tokEl ? String(tokEl.value || '').trim() : '';
+      if (!/^[a-z0-9_.-]{1,64}$/.test(prov) || !tok) return;
+      const cur = readBrainDelegatedTokens();
+      cur[prov] = tok;
+      writeBrainDelegatedTokens(cur);
+      if (tokEl) tokEl.value = '';
+      if (dlg && typeof dlg.close === 'function' && dlg.open) dlg.close();
+      else if (dlg && dlg.removeAttribute) dlg.removeAttribute('open');
+      await refreshGraphAfterAuthChange();
+    }
+
+    async function clearBrainDelegatedAuth() {
+      const dlg = $('brain-auth-dialog');
+      writeBrainDelegatedTokens({});
+      renderBrainAuthBanner([], false);
+      if (dlg && typeof dlg.close === 'function' && dlg.open) dlg.close();
+      else if (dlg && dlg.removeAttribute) dlg.removeAttribute('open');
+      await refreshGraphAfterAuthChange();
+    }
+
+    if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+      window.addEventListener('message', ev => {
+        if (!ev || ev.origin !== window.location.origin) return;
+        const d = ev.data;
+        if (!d || typeof d !== 'object' || d.type !== 'opscryer:setDelegatedToken') return;
+        const prov = String(d.provider || '').trim().toLowerCase();
+        const tok = String(d.token || '').trim();
+        if (!/^[a-z0-9_.-]{1,64}$/.test(prov) || !tok) return;
+        const cur = readBrainDelegatedTokens();
+        cur[prov] = tok;
+        writeBrainDelegatedTokens(cur);
+        refreshGraphAfterAuthChange();
+      });
+    }
+
     function startEcosystemOverlayPoller() {
       if (ecosystemOverlayPollTimer || typeof setInterval !== 'function' || typeof fetch !== 'function' || !window.location || !window.location.hostname) return;
       ecosystemOverlayPollTimer = setInterval(async () => {
@@ -2940,8 +4141,12 @@ def render_standalone_browser_html(default_api_base: str = "", dataset: dict[str
         ecosystemPollBusy = true;
         try {
           const scopeParam = SpatialGraphAdapter.currentScope ? ('?scope=' + encodeURIComponent(SpatialGraphAdapter.currentScope)) : '';
-          const res = await fetch((SpatialGraphAdapter.apiBase || '') + '/api/v1/graph/catalog' + scopeParam, {cache: 'no-store'});
+          const reqHeaders = typeof buildBrainAuthHeaders === 'function' ? buildBrainAuthHeaders() : {};
+          const res = await fetch((SpatialGraphAdapter.apiBase || '') + '/api/v1/graph/catalog' + scopeParam, {cache: 'no-store', headers: reqHeaders});
           const data = await res.json();
+          if (data && typeof renderBrainAuthBanner === 'function') {
+            renderBrainAuthBanner(data.auth_required_sources || [], Boolean(data.user_scoped));
+          }
           const nextRev = data && data.ecosystem_revision ? String(data.ecosystem_revision) : '';
           if (nextRev && nextRev !== lastSeenEcosystemRevision) {
             lastSeenEcosystemRevision = nextRev;
@@ -3147,45 +4352,56 @@ def render_standalone_browser_html(default_api_base: str = "", dataset: dict[str
           }
         }
       });
+      const paramsNow = new URLSearchParams((window.location && window.location.search) || '');
+      const isTruthCatalog = Boolean(
+        (SpatialGraphAdapter.catalog && SpatialGraphAdapter.catalog.truth_mode)
+        || (SpatialGraphAdapter.catalog && SpatialGraphAdapter.catalog.ai_invoked === false)
+        || (SpatialGraphAdapter.catalog && SpatialGraphAdapter.catalog.source === 'workspace_truth_harvest')
+        || (SpatialGraphAdapter.catalog && SpatialGraphAdapter.catalog.source === 'truth_source_unavailable')
+        || (SpatialGraphAdapter.catalog && SpatialGraphAdapter.catalog.source === 'live_backend_unreachable')
+      );
+      const injectSubsystemDemo = paramsNow.get('demo') === '1' && !isTruthCatalog;
       const existingIds = new Set(baseNodes.map(n => String(n.id)));
-      SUBSYSTEM_LAYER_NODES.forEach(sn => existingIds.add(sn.id));
-      const realNsLinkMap = {
-        'swarm-nanomachine-fleet': ['swarm-unit-nanobot-4gpu', 'swarm-unit-agy-orchestrator', 'swarm-unit-master-sandbox', 'swarm-unit-argon-planner', 'swarm-unit-swarm-memory', 'k8s/Namespace//dev-envs', 'k8s/Namespace//ai-infra'],
-        'swarm-unit-nanobot-4gpu': ['k8s/Node//nodegamma03', 'k8s/Node//nodebeta02', 'k8s/Namespace//ai-infra', 'k8s/Namespace//dev-envs'],
-        'swarm-unit-agy-orchestrator': ['k8s/Deployment/dev-envs/agy-ai-orchestrator', 'k8s/Deployment/dev-envs/opscryer-suite-dev', 'k8s/Namespace//dev-envs'],
-        'swarm-unit-master-sandbox': ['k8s/Deployment/dev-envs/agy-master-sandbox', 'k8s/Namespace//dev-envs'],
-        'swarm-unit-argon-planner': ['k8s/Deployment/dev-envs/argon-planner', 'kb-gp-002', 'kb-db-001', 'k8s/Namespace//dev-envs'],
-        'swarm-unit-swarm-memory': ['k8s/Deployment/dev-envs/swarm-memory', 'kb-stor-007', 'k8s/Namespace//dev-envs', 'k8s/Namespace//storage-system'],
-        'portal-tactical-deck': ['swarm-nanomachine-fleet', 'k8s/Namespace//security', 'k8s/Namespace//dev-envs', 'kb-sec-004'],
-        'portal-incidents': ['k8s/Namespace//monitoring', 'kb-obs-005'],
-        'portal-capacity': ['k8s/Node//nodegamma03', 'k8s/Node//nodebeta02', 'k8s/Node//nodealpha01', 'k8s/Namespace//ai-infra', 'k8s/Namespace//gpu-operator'],
-        'portal-network': ['k8s/Namespace//iam', 'k8s/Namespace//ingress-nginx', 'kb-iam-003'],
-        'portal-gitops': ['k8s/Namespace//argocd', 'k8s/Namespace//gitlab', 'kb-gitops-009', 'kb-gp-002'],
-        'portal-secops': ['k8s/Namespace//security', 'k8s/Namespace//kyverno', 'kb-sec-004', 'kb-sec-010'],
-        'portal-storage': ['k8s/Namespace//storage-system', 'k8s/Namespace//democratic-csi', 'kb-stor-007'],
-        'portal-kb-docs': ['kb-db-001', 'kb-gp-002', 'kb-iam-003', 'kb-sec-004', 'kb-obs-005', 'kb-game-006', 'kb-stor-007', 'kb-cicd-008', 'kb-gitops-009', 'kb-sec-010'],
-        'portal-games-debug': ['k8s/Namespace//game-servers', 'kb-game-006'],
-        'portal-simulator': ['k8s/Node//nodebeta02', 'k8s/Node//nodegamma03', 'k8s/Namespace//storage-system', 'k8s/Namespace//monitoring']
-      };
-      SUBSYSTEM_LAYER_NODES.forEach(sn => {
-        if (!byId.has(sn.id)) {
-          const extraReal = (realNsLinkMap[sn.id] || []).filter(id => existingIds.has(id));
-          const mergedChildren = [...extraReal, ...sn.drilldown_children.filter(id => existingIds.has(id) && !extraReal.includes(id))];
-          const added = {...sn, drilldown_children: mergedChildren};
-          baseNodes.push(added);
-          byId.set(sn.id, added);
-        }
-      });
+      if (injectSubsystemDemo) {
+        SUBSYSTEM_LAYER_NODES.forEach(sn => existingIds.add(sn.id));
+        const realNsLinkMap = {
+          'swarm-nanomachine-fleet': ['swarm-unit-nanobot-4gpu', 'swarm-unit-agy-orchestrator', 'swarm-unit-master-sandbox', 'swarm-unit-argon-planner', 'swarm-unit-swarm-memory', 'k8s/Namespace//dev-envs', 'k8s/Namespace//ai-infra'],
+          'swarm-unit-nanobot-4gpu': ['k8s/Node//nodegamma03', 'k8s/Node//nodebeta02', 'k8s/Namespace//ai-infra', 'k8s/Namespace//dev-envs'],
+          'swarm-unit-agy-orchestrator': ['k8s/Deployment/dev-envs/agy-ai-orchestrator', 'k8s/Deployment/dev-envs/opscryer-suite-dev', 'k8s/Namespace//dev-envs'],
+          'swarm-unit-master-sandbox': ['k8s/Deployment/dev-envs/agy-master-sandbox', 'k8s/Namespace//dev-envs'],
+          'swarm-unit-argon-planner': ['k8s/Deployment/dev-envs/argon-planner', 'kb-gp-002', 'kb-db-001', 'k8s/Namespace//dev-envs'],
+          'swarm-unit-swarm-memory': ['k8s/Deployment/dev-envs/swarm-memory', 'kb-stor-007', 'k8s/Namespace//dev-envs', 'k8s/Namespace//storage-system'],
+          'portal-tactical-deck': ['swarm-nanomachine-fleet', 'k8s/Namespace//security', 'k8s/Namespace//dev-envs', 'kb-sec-004'],
+          'portal-incidents': ['k8s/Namespace//monitoring', 'kb-obs-005'],
+          'portal-capacity': ['k8s/Node//nodegamma03', 'k8s/Node//nodebeta02', 'k8s/Node//nodealpha01', 'k8s/Namespace//ai-infra', 'k8s/Namespace//gpu-operator'],
+          'portal-network': ['k8s/Namespace//iam', 'k8s/Namespace//ingress-nginx', 'kb-iam-003'],
+          'portal-gitops': ['k8s/Namespace//argocd', 'k8s/Namespace//gitlab', 'kb-gitops-009', 'kb-gp-002'],
+          'portal-secops': ['k8s/Namespace//security', 'k8s/Namespace//kyverno', 'kb-sec-004', 'kb-sec-010'],
+          'portal-storage': ['k8s/Namespace//storage-system', 'k8s/Namespace//democratic-csi', 'kb-stor-007'],
+          'portal-kb-docs': ['kb-db-001', 'kb-gp-002', 'kb-iam-003', 'kb-sec-004', 'kb-obs-005', 'kb-game-006', 'kb-stor-007', 'kb-cicd-008', 'kb-gitops-009', 'kb-sec-010'],
+          'portal-games-debug': ['k8s/Namespace//game-servers', 'kb-game-006'],
+          'portal-simulator': ['k8s/Node//nodebeta02', 'k8s/Node//nodegamma03', 'k8s/Namespace//storage-system', 'k8s/Namespace//monitoring']
+        };
+        SUBSYSTEM_LAYER_NODES.forEach(sn => {
+          if (!byId.has(sn.id)) {
+            const extraReal = (realNsLinkMap[sn.id] || []).filter(id => existingIds.has(id));
+            const mergedChildren = [...extraReal, ...sn.drilldown_children.filter(id => existingIds.has(id) && !extraReal.includes(id))];
+            const added = {...sn, drilldown_children: mergedChildren};
+            baseNodes.push(added);
+            byId.set(sn.id, added);
+          }
+        });
+      }
       baseNodes.forEach(n => {
         n.drilldown_children = (n.drilldown_children || []).filter((cid, idx, arr) => cid !== n.id && byId.has(cid) && arr.indexOf(cid) === idx);
       });
       const explicitRootId = SpatialGraphAdapter.catalog && SpatialGraphAdapter.catalog.root_node_id ? String(SpatialGraphAdapter.catalog.root_node_id) : '';
       const rootNode = (explicitRootId && byId.get(explicitRootId)) || baseNodes.find(n => n.id === 'cluster-home') || baseNodes.find(n => n.id === 'root-company') || baseNodes[0];
       if (rootNode) {
-        if (!rootNode.drilldown_children.includes('swarm-nanomachine-fleet')) {
+        if (byId.has('swarm-nanomachine-fleet') && !rootNode.drilldown_children.includes('swarm-nanomachine-fleet')) {
           rootNode.drilldown_children.unshift('swarm-nanomachine-fleet');
         }
-        if (!rootNode.drilldown_children.includes('hub-opscryer-portals')) {
+        if (byId.has('hub-opscryer-portals') && !rootNode.drilldown_children.includes('hub-opscryer-portals')) {
           rootNode.drilldown_children.unshift('hub-opscryer-portals');
         }
         if (byId.has('meshworks-coordinator') && !rootNode.drilldown_children.includes('meshworks-coordinator')) {
@@ -3195,31 +4411,23 @@ def render_standalone_browser_html(default_api_base: str = "", dataset: dict[str
           rootNode.drilldown_children.unshift('brain-skills-hub');
         }
       }
-      const liveCurrencies = ((SpatialGraphAdapter.catalog && SpatialGraphAdapter.catalog.rts_currencies) || []).map(c => {
-        if (c.currency_id === 'renovate_failures' && (c.display_value === 'Unavailable' || !(c.dropdown_items || []).length)) {
-          return {...c, available: true, display_value: '0 failing (Synced)', hex_color: '#22C55E', dropdown_items: [
-            {label: 'GitOps Release Cockpit', value: '6/6 Gates Ready', target_id: 'portal-gitops'},
-            {label: 'ns:argocd', value: 'Synced & Healthy', target_id: 'k8s/Namespace//argocd'},
-            {label: 'KB-CICD-008: Golden Path', value: 'Renovate SemVer', target_id: 'kb-cicd-008'}
-          ].filter(i => byId.has(i.target_id))};
-        }
-        if (c.currency_id === 'open_mrs' && (c.display_value === 'Unavailable' || !(c.dropdown_items || []).length)) {
-          return {...c, available: true, display_value: '2-Stage Ready', hex_color: '#38BDF8', dropdown_items: [
-            {label: 'deploy/gitlab', value: 'GitLab CE Ready', target_id: 'k8s/Deployment/gitlab/gitlab'},
-            {label: 'GitOps Release Cockpit', value: '2-Stage Promotion', target_id: 'portal-gitops'},
-            {label: 'KB-GITOPS-009: ArgoCD GitOps', value: 'MR Flow', target_id: 'kb-gitops-009'}
-          ].filter(i => byId.has(i.target_id))};
-        }
-        return c;
-      });
+      /* Full-Truth Policy: preserve backend currency availability verbatim without substituting fake green counts. */
+      const liveCurrencies = (SpatialGraphAdapter.catalog && Array.isArray(SpatialGraphAdapter.catalog.rts_currencies)) ? SpatialGraphAdapter.catalog.rts_currencies : [];
       SpatialGraphAdapter.catalog = {...SpatialGraphAdapter.catalog, nodes: baseNodes, edges: baseEdges, rts_currencies: liveCurrencies};
       SpatialGraphAdapter.rebuildFastIndex();
+      if (typeof window !== 'undefined' && typeof window.syncPrimaryCatalogToDatasetStore === 'function') window.syncPrimaryCatalogToDatasetStore(SpatialGraphAdapter.catalog);
       const ecoRev = String((SpatialGraphAdapter.catalog && SpatialGraphAdapter.catalog.ecosystem_revision) || '');
       if (ecoRev) lastSeenEcosystemRevision = ecoRev;
       if ($('adapter-mode-badge')) {
-        $('adapter-mode-badge').textContent = 'UNIFIED_CLUSTER_GRAPH (' + baseNodes.length + ' NODES)' + (ecoRev ? (' • ECO ' + ecoRev) : '');
+        const prefix = isTruthCatalog ? 'FULL_TRUTH_GRAPH' : 'UNIFIED_CLUSTER_GRAPH';
+        $('adapter-mode-badge').textContent = prefix + ' (' + baseNodes.length + ' NODES)' + (ecoRev ? (' • ECO ' + ecoRev) : '');
       }
       SpatialGraphAdapter.renderCurrenciesBar();
+      if (!baseNodes.length) {
+        if (typeof renderSevenLevelAndTacticalBars === 'function') renderSevenLevelAndTacticalBars([]);
+        if ($('browser-children-list') && $('browser-children-list').replaceChildren) $('browser-children-list').replaceChildren();
+        return;
+      }
       if (preserveFocus && prevId && byId.has(prevId)) {
         SpatialGraphAdapter.historyStack = prevStack.filter(id => byId.has(id));
         SpatialGraphAdapter.currentId = prevId;
@@ -3368,20 +4576,20 @@ def render_standalone_browser_html(default_api_base: str = "", dataset: dict[str
     async function loadScaleStressGraph(nodeCount) {
       const total = Math.max(50, Math.min(2000, Number(nodeCount) || 600));
       const nodes = [
-        {id: 'root-company', label: 'Scale Benchmark Citadel (' + total + ' Nodes @ 60 FPS)', kind: 'company_root', domain: 'company_org', summary: 'Synthetic multi-layer enterprise topology for 60 FPS rapid zoom verification.', primary_url: '/scale', drilldown_children: []}
+        {id: 'root-company', label: 'Scale Topology Root (' + total + ' Nodes @ 60 FPS)', kind: 'company_root', domain: 'company_org', summary: 'Synthetic multi-layer enterprise topology for 60 FPS rapid zoom verification.', primary_url: '/scale', drilldown_children: []}
       ];
       const teams = 6, projsPerTeam = 6, deploysPerProj = 4;
       let created = 1;
       for (let t = 1; t <= teams && created < total; t++) {
         const tid = 'team-scale-' + t;
         nodes[0].drilldown_children.push(tid);
-        const tNode = {id: tid, label: 'Sector Garrison #' + t, kind: 'company_team', domain: 'company_org', summary: 'High-density team sector ' + t, primary_url: '/scale', drilldown_children: []};
+        const tNode = {id: tid, label: 'Engineering Sector #' + t, kind: 'company_team', domain: 'company_org', summary: 'High-density team sector ' + t, primary_url: '/scale', drilldown_children: []};
         nodes.push(tNode);
         created++;
         for (let p = 1; p <= projsPerTeam && created < total; p++) {
           const pid = 'proj-scale-' + t + '-' + p;
           tNode.drilldown_children.push(pid);
-          const pNode = {id: pid, label: 'Foundry Service ' + t + '.' + p, kind: 'engineering_project', domain: 'company_org', summary: 'Service foundry ' + pid, primary_url: '/scale', drilldown_children: []};
+          const pNode = {id: pid, label: 'Service Module ' + t + '.' + p, kind: 'engineering_project', domain: 'company_org', summary: 'Service repository ' + pid, primary_url: '/scale', drilldown_children: []};
           nodes.push(pNode);
           created++;
           for (let d = 1; d <= deploysPerProj && created < total; d++) {
@@ -3604,6 +4812,14 @@ def render_standalone_browser_html(default_api_base: str = "", dataset: dict[str
       $('browser-qa-output').textContent = JSON.stringify({adapter_mode: SpatialGraphAdapter.mode, query: q, matched_node_id: focusId, jev_policy_id: sim.policy_id, required_it_tickets: sim.required_it_tickets});
     }
     function handleSpatialKeydown(ev) {
+      if (typeof window !== 'undefined' && window.workspaceLayoutController && window.workspaceLayoutController.handleKeydown(ev)) return;
+      const wlDlg = $('workspace-layout-dialog');
+      const forgeDlg = $('wm-inline-forge-dialog');
+      if ((wlDlg && wlDlg.open) || (forgeDlg && forgeDlg.open)) return;
+      if (inlineWmActive) {
+        handleInlineWorldMapKeydown(ev);
+        return;
+      }
       if (!ev || ev.ctrlKey || ev.metaKey || ev.altKey) return;
       const tgt = ev.target;
       const tag = tgt && tgt.tagName ? String(tgt.tagName).toUpperCase() : '';
@@ -3612,6 +4828,877 @@ def render_standalone_browser_html(default_api_base: str = "", dataset: dict[str
       if (k === 'q' || k === 'Q') enterSelectedBoxLayer();
       else if (k === 'w' || k === 'W' || k === 'Escape' || k === 'Backspace') ascendBoxLayer();
     }
+__GRAPH_LAYERS_JS__
+__DATASET_TREE_STORE_JS__
+__WORLD_MAP_ENGINE_JS__
+    let activeCanvasView = 'boxes';
+    let activeSpatialProjection = 'iso_25d';
+    let activeLevelFilter = null;
+    let activeStatusFilter = null;
+    let activeWorldMapSelectedIds = [];
+    let inlineWmActive = false;
+    let inlineWmController = null;
+    let inlineWmForge = null;
+    let lastWmCatalogRef = null;
+
+    function normalizeInlineProjection(projId) {
+      if (window.OpsCryerWorldMap && typeof window.OpsCryerWorldMap.normalizeProjectionId === 'function') {
+        return window.OpsCryerWorldMap.normalizeProjectionId(projId);
+      }
+      const valid = {flat_2d: 'flat_2d', iso_25d: 'iso_25d', orbit_3d: 'orbit_3d'};
+      return valid[String(projId || '')] || 'iso_25d';
+    }
+
+    function syncNavQuickProjectionButtons(projId) {
+      const bar = $('nav-quick-proj-bar');
+      if (!bar || typeof bar.querySelectorAll !== 'function') return;
+      const norm = normalizeInlineProjection(projId);
+      bar.querySelectorAll('button[data-proj]').forEach(btn => {
+        const isCurrent = inlineWmActive && btn.getAttribute('data-proj') === norm;
+        btn.setAttribute('aria-pressed', isCurrent ? 'true' : 'false');
+        btn.tabIndex = (isCurrent || (!inlineWmActive && btn.getAttribute('data-proj') === norm)) ? 0 : -1;
+      });
+    }
+
+    function selectSpatialProjectionView(projId) {
+      const norm = normalizeInlineProjection(projId);
+      activeSpatialProjection = norm;
+      if (activeCanvasView !== 'world_map') {
+        setWorkspaceCanvasView('world_map');
+      }
+      const ctrl = ensureInlineWorldMapController();
+      if (ctrl && typeof ctrl.setProjection === 'function') {
+        ctrl.setProjection(norm);
+      }
+      syncNavQuickProjectionButtons(norm);
+      return activeSpatialProjection;
+    }
+
+    function showFilteredNodeHits(titleText, nodeIds) {
+      const bar = $('browser-filter-bar');
+      if (!bar || typeof bar.replaceChildren !== 'function') return;
+      const items = [];
+      const hdr = mk('span');
+      hdr.className = 'subbox-chip';
+      hdr.textContent = titleText + ' (' + nodeIds.length + ')';
+      items.push(hdr);
+      nodeIds.slice(0, 14).forEach(nid => {
+        const n = SpatialGraphAdapter.getNode(nid);
+        if (n) {
+          items.push(SpatialGraphAdapter.makeNodeButton(String(n.label || nid).slice(0, 36), String(n.kind || nid), () => SpatialGraphAdapter.selectNode(nid, false)));
+        }
+      });
+      const clr = mk('button');
+      clr.type = 'button';
+      clr.className = 'node-btn';
+      clr.textContent = '✕ Clear Filter';
+      clr.addEventListener('click', () => {
+        activeLevelFilter = null;
+        activeStatusFilter = null;
+        bar.replaceChildren();
+        if (inlineWmController) {
+          inlineWmController.setLevelFilter(null);
+          inlineWmController.setStatusFilter(null);
+        }
+        renderSevenLevelAndTacticalBars(activeCanvasView === 'world_map' && activeWorldMapSelectedIds.length ? activeWorldMapSelectedIds : [SpatialGraphAdapter.selectedBoxId || SpatialGraphAdapter.currentId]);
+      });
+      items.push(clr);
+      bar.replaceChildren(...items);
+    }
+
+    function applyGraphLevelFilter(levelId, candidateIds) {
+      activeLevelFilter = (activeLevelFilter === levelId) ? null : levelId;
+      if (inlineWmController) inlineWmController.setLevelFilter(activeLevelFilter);
+      if (activeLevelFilter) {
+        const meta = window.OpsCryerGraphLayers && window.OpsCryerGraphLayers.LEVEL_MAP[activeLevelFilter];
+        const ids = Array.isArray(candidateIds) ? candidateIds : [];
+        showFilteredNodeHits((meta ? (meta.icon + ' ' + meta.label) : activeLevelFilter), ids);
+      } else {
+        const bar = $('browser-filter-bar');
+        if (bar && typeof bar.replaceChildren === 'function') bar.replaceChildren();
+      }
+      const selIds = (activeCanvasView === 'world_map' && activeWorldMapSelectedIds.length) ? activeWorldMapSelectedIds : [SpatialGraphAdapter.selectedBoxId || SpatialGraphAdapter.currentId];
+      renderSevenLevelAndTacticalBars(selIds);
+    }
+
+    function applyTacticalStatusFilter(statusId) {
+      activeStatusFilter = (activeStatusFilter === statusId) ? null : statusId;
+      if (inlineWmController) inlineWmController.setStatusFilter(activeStatusFilter);
+      if (activeStatusFilter && window.OpsCryerGraphLayers) {
+        const matches = ((SpatialGraphAdapter.catalog && SpatialGraphAdapter.catalog.nodes) || [])
+          .filter(n => window.OpsCryerGraphLayers.classifyTacticalStatus(n) === activeStatusFilter)
+          .map(n => String(n.id));
+        showFilteredNodeHits('Status: ' + activeStatusFilter.toUpperCase(), matches);
+      } else {
+        const bar = $('browser-filter-bar');
+        if (bar && typeof bar.replaceChildren === 'function') bar.replaceChildren();
+      }
+      const selIds = (activeCanvasView === 'world_map' && activeWorldMapSelectedIds.length) ? activeWorldMapSelectedIds : [SpatialGraphAdapter.selectedBoxId || SpatialGraphAdapter.currentId];
+      renderSevenLevelAndTacticalBars(selIds);
+    }
+
+    function renderSevenLevelAndTacticalBars(selectedIds) {
+      if (!window.OpsCryerGraphLayers) return;
+      const gl = window.OpsCryerGraphLayers;
+      const validSel = (selectedIds || []).filter(Boolean);
+      const analysis = gl.analyzeSelectionLevels(SpatialGraphAdapter.catalog || {nodes: [], edges: []}, validSel);
+
+      const globalBar = $('graph-level-breakdown-bar');
+      if (globalBar && typeof globalBar.replaceChildren === 'function') {
+        const nodes = [];
+        const lbl = mk('strong');
+        lbl.style.color = 'var(--cyan)';
+        lbl.style.fontSize = '0.68rem';
+        lbl.textContent = '7-LEVEL GRAPH:';
+        nodes.push(lbl);
+        gl.GRAPH_LEVELS.forEach(meta => {
+          const entry = analysis.global_breakdown[meta.id] || {count: 0, node_ids: []};
+          const btn = mk('button');
+          btn.type = 'button';
+          btn.className = 'kg-level-stat-pill' + (activeLevelFilter === meta.id ? ' active' : '') + (entry.count === 0 ? ' empty' : '');
+          btn.style.borderColor = entry.count > 0 ? meta.color : '#334155';
+          btn.textContent = meta.icon + ' ' + meta.short_label + ' (' + entry.count + ')';
+          btn.addEventListener('click', () => applyGraphLevelFilter(meta.id, entry.node_ids));
+          nodes.push(btn);
+        });
+        globalBar.replaceChildren(...nodes);
+      }
+
+      const tacBar = $('tactical-6color-ribbon');
+      if (tacBar && typeof tacBar.replaceChildren === 'function') {
+        const pills = [];
+        const tLbl = mk('strong');
+        tLbl.style.color = 'var(--amber)';
+        tLbl.style.fontSize = '0.68rem';
+        tLbl.textContent = 'TACTICAL STATUS:';
+        pills.push(tLbl);
+        const allBtn = mk('button');
+        allBtn.type = 'button';
+        allBtn.className = 'tactical-status-pill' + (!activeStatusFilter ? ' active' : '');
+        allBtn.textContent = 'ALL (' + analysis.total_nodes + ')';
+        allBtn.addEventListener('click', () => applyTacticalStatusFilter(null));
+        pills.push(allBtn);
+        gl.TACTICAL_STATUSES.forEach(st => {
+          const cnt = (analysis.tactical_status_counts && analysis.tactical_status_counts[st.id]) || 0;
+          const b = mk('button');
+          b.type = 'button';
+          b.className = 'tactical-status-pill' + (activeStatusFilter === st.id ? ' active' : '');
+          b.style.borderColor = cnt > 0 ? st.color : '#334155';
+          b.textContent = st.label + ': ' + cnt;
+          b.addEventListener('click', () => applyTacticalStatusFilter(st.id));
+          pills.push(b);
+        });
+        tacBar.replaceChildren(...pills);
+      }
+
+      const rtsStatsEl = $('rts-selection-level-stats');
+      if (rtsStatsEl) {
+        const targetMap = validSel.length ? analysis.selection_breakdown : analysis.global_breakdown;
+        gl.renderLevelStatChips(rtsStatsEl, targetMap, activeLevelFilter, (lvlId, nids) => applyGraphLevelFilter(lvlId, nids));
+      }
+      const localStatsEl = $('local-links-focal-level-stats');
+      if (localStatsEl && activeCanvasView === 'local_links') {
+        gl.renderLevelStatChips(localStatsEl, analysis.selection_breakdown, activeLevelFilter, (lvlId, nids) => applyGraphLevelFilter(lvlId, nids));
+      }
+    }
+
+    function drawLocalLinksSvgConnectors() {
+      const stage = $('inline-local-links-stage');
+      const svg = $('local-links-svg-overlay');
+      const center = $('local-links-center-col');
+      const leftCol = $('local-links-left-col');
+      const rightCol = $('local-links-right-col');
+      if (!stage || !svg || !center || typeof stage.getBoundingClientRect !== 'function' || typeof document.createElementNS !== 'function') return;
+      const sr = stage.getBoundingClientRect();
+      const cr = center.getBoundingClientRect();
+      if (!sr.width || !cr.width) return;
+      if (typeof svg.replaceChildren === 'function') svg.replaceChildren();
+      const addCurve = (x1, y1, x2, y2, stroke) => {
+        const p = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        const mx = (x1 + x2) * 0.5;
+        p.setAttribute('d', 'M ' + x1 + ' ' + y1 + ' C ' + mx + ' ' + y1 + ', ' + mx + ' ' + y2 + ', ' + x2 + ' ' + y2);
+        p.setAttribute('fill', 'none');
+        p.setAttribute('stroke', stroke);
+        p.setAttribute('stroke-width', '1.6');
+        p.setAttribute('stroke-opacity', '0.55');
+        svg.appendChild(p);
+      };
+      const cLeftX = cr.left - sr.left;
+      const cRightX = cr.right - sr.left;
+      const cMidY = (cr.top + cr.bottom) * 0.5 - sr.top;
+      if (leftCol && leftCol.children) {
+        Array.from(leftCol.children).slice(0, 12).forEach(el => {
+          if (typeof el.getBoundingClientRect !== 'function') return;
+          const r = el.getBoundingClientRect();
+          addCurve(r.right - sr.left, (r.top + r.bottom) * 0.5 - sr.top, cLeftX, cMidY, '#38BDF8');
+        });
+      }
+      if (rightCol && rightCol.children) {
+        Array.from(rightCol.children).slice(0, 14).forEach(el => {
+          if (typeof el.getBoundingClientRect !== 'function') return;
+          const r = el.getBoundingClientRect();
+          addCurve(cRightX, cMidY, r.left - sr.left, (r.top + r.bottom) * 0.5 - sr.top, '#22C55E');
+        });
+      }
+    }
+
+    function renderLocalLinksView(targetId) {
+      const node = SpatialGraphAdapter.getNode(targetId || SpatialGraphAdapter.selectedBoxId || SpatialGraphAdapter.currentId);
+      const leftCol = $('local-links-left-col');
+      const rightCol = $('local-links-right-col');
+      const techDock = $('local-links-tech-inspector');
+      if (!node || !leftCol || !rightCol) return;
+      const gl = window.OpsCryerGraphLayers;
+      const lvlId = gl ? gl.classifyNodeGraphLevel(node) : 'feature';
+      const lvlMeta = (gl && gl.LEVEL_MAP[lvlId]) || {icon: '✨', label: 'Feature', color: '#38BDF8'};
+      const stId = gl ? gl.classifyTacticalStatus(node) : 'green';
+
+      if ($('local-links-focal-level-badge')) {
+        $('local-links-focal-level-badge').textContent = lvlMeta.icon + ' ' + lvlMeta.label.toUpperCase();
+        $('local-links-focal-level-badge').style.borderColor = lvlMeta.color;
+        $('local-links-focal-level-badge').style.color = lvlMeta.color;
+      }
+      if ($('local-links-focal-status-badge')) {
+        $('local-links-focal-status-badge').textContent = 'STATUS: ' + stId.toUpperCase();
+      }
+      if ($('local-links-focal-title')) $('local-links-focal-title').textContent = String(node.label || node.id);
+      if ($('local-links-focal-summary')) $('local-links-focal-summary').textContent = String(node.summary || 'No summary supplied by live source.');
+
+      const leftItems = [];
+      const seenLeft = new Set();
+      (SpatialGraphAdapter.historyStack || []).forEach((aid, idx) => {
+        if (seenLeft.has(aid)) return;
+        seenLeft.add(aid);
+        const an = SpatialGraphAdapter.getNode(aid) || {id: aid, label: aid};
+        leftItems.push(SpatialGraphAdapter.makeNodeButton('⬆ L' + idx + ': ' + String(an.label || aid).slice(0, 34), 'ancestor', () => travelToAncestor(idx)));
+      });
+      ((SpatialGraphAdapter.inboundMap && SpatialGraphAdapter.inboundMap.get(String(node.id))) || []).slice(0, 12).forEach(edge => {
+        if (seenLeft.has(edge.source)) return;
+        seenLeft.add(edge.source);
+        const sn = SpatialGraphAdapter.getNode(edge.source) || {id: edge.source, label: edge.source};
+        const sl = gl ? gl.LEVEL_MAP[gl.classifyNodeGraphLevel(sn)] : null;
+        leftItems.push(SpatialGraphAdapter.makeNodeButton((sl ? sl.icon + ' ' : '⬅ ') + String(sn.label || edge.source).slice(0, 34), String(edge.relation || 'inbound'), () => SpatialGraphAdapter.selectNode(edge.source, false)));
+      });
+      if (!leftItems.length) leftItems.push(SpatialGraphAdapter.makeNote('Root / No upstream links', 'var(--muted)'));
+      leftCol.replaceChildren(...leftItems);
+
+      const rightItems = [];
+      const seenRight = new Set();
+      (node.drilldown_children || []).slice(0, 16).forEach(cid => {
+        if (seenRight.has(cid)) return;
+        seenRight.add(cid);
+        const cn = SpatialGraphAdapter.getNode(cid) || {id: cid, label: cid};
+        const cl = gl ? gl.LEVEL_MAP[gl.classifyNodeGraphLevel(cn)] : null;
+        rightItems.push(SpatialGraphAdapter.makeNodeButton((cl ? cl.icon + ' ' : '↘ ') + String(cn.label || cid).slice(0, 36), 'child • ' + (cl ? cl.short_label : 'node'), () => SpatialGraphAdapter.selectNode(cid, false)));
+      });
+      ((SpatialGraphAdapter.outboundMap && SpatialGraphAdapter.outboundMap.get(String(node.id))) || []).slice(0, 16).forEach(edge => {
+        if (seenRight.has(edge.target)) return;
+        seenRight.add(edge.target);
+        const tn = SpatialGraphAdapter.getNode(edge.target) || {id: edge.target, label: edge.target};
+        const tl = gl ? gl.LEVEL_MAP[gl.classifyNodeGraphLevel(tn)] : null;
+        rightItems.push(SpatialGraphAdapter.makeNodeButton((tl ? tl.icon + ' ' : '➡ ') + String(tn.label || edge.target).slice(0, 36), String(edge.relation || 'outbound'), () => SpatialGraphAdapter.selectNode(edge.target, false)));
+      });
+      if (!rightItems.length) rightItems.push(SpatialGraphAdapter.makeNote('Leaf node — no downstream local links', 'var(--muted)'));
+      rightCol.replaceChildren(...rightItems);
+
+      if (techDock && typeof techDock.replaceChildren === 'function') {
+        const boxes = [];
+        const makeTechBox = (heading, detail, actionLabel, url) => {
+          const box = mk('div');
+          box.className = 'local-links-tech-box';
+          const h = mk('div');
+          h.style.color = 'var(--cyan)';
+          h.style.fontWeight = '800';
+          h.textContent = heading;
+          const d = mk('div');
+          d.style.color = 'var(--muted)';
+          d.style.margin = '0.15rem 0';
+          d.textContent = detail;
+          box.appendChild(h);
+          box.appendChild(d);
+          if (url) {
+            box.appendChild(SpatialGraphAdapter.makeNodeButton(actionLabel, String(url).slice(0, 42), () => openUrlOrPortal(String(url))));
+          }
+          return box;
+        };
+        boxes.push(makeTechBox('📦 Source & Identity', 'ID: ' + String(node.id) + (node.source_path ? (' • ' + node.source_path) : ''), '↗ Open Primary Link', node.primary_url || ''));
+        boxes.push(makeTechBox('🔗 Connected Neighbors', 'Inbound: ' + ((SpatialGraphAdapter.inboundMap.get(String(node.id)) || []).length) + ' • Outbound: ' + ((SpatialGraphAdapter.outboundMap.get(String(node.id)) || []).length) + ' • Children: ' + ((node.drilldown_children || []).length), '', ''));
+        const cpUrls = Array.isArray(node.control_plane_urls) ? node.control_plane_urls : [];
+        if (cpUrls.length) {
+          const cpBox = mk('div');
+          cpBox.className = 'local-links-tech-box';
+          const cpHead = mk('div');
+          cpHead.style.color = 'var(--cyan)';
+          cpHead.style.fontWeight = '800';
+          cpHead.textContent = '🚀 Related Dashboards & Links (' + cpUrls.length + ')';
+          cpBox.appendChild(cpHead);
+          const cpRow = mk('div');
+          cpRow.style.cssText = 'display:flex;flex-wrap:wrap;gap:0.25rem;margin-top:0.25rem;';
+          cpUrls.slice(0, 8).forEach(item => {
+            if (!item || !item.url) return;
+            const uStr = String(item.url).trim();
+            if (!(uStr.indexOf('http://') === 0 || uStr.indexOf('https://') === 0 || (uStr.indexOf('/') === 0 && uStr.indexOf('//') !== 0))) return;
+            cpRow.appendChild(SpatialGraphAdapter.makeNodeButton('↗ ' + String(item.label || item.system || 'Open').slice(0, 26), String(item.system || 'link').toUpperCase(), () => openUrlOrPortal(uStr)));
+          });
+          cpBox.appendChild(cpRow);
+          boxes.push(cpBox);
+        } else {
+          boxes.push(makeTechBox('📜 Architectural Level', lvlMeta.icon + ' ' + lvlMeta.label + ' • Domain: ' + String(node.domain || 'graph'), '', ''));
+        }
+        techDock.replaceChildren(...boxes);
+      }
+
+      if (gl) {
+        const analysis = gl.analyzeSelectionLevels(SpatialGraphAdapter.catalog || {nodes: [], edges: []}, [node.id]);
+        gl.renderLevelStatChips($('local-links-focal-level-stats'), analysis.selection_breakdown, activeLevelFilter, (lid, nids) => applyGraphLevelFilter(lid, nids));
+      }
+      if (typeof requestAnimationFrame === 'function') requestAnimationFrame(drawLocalLinksSvgConnectors);
+    }
+
+    function syncInlineWorldMapCatalog() {
+      if (inlineWmController && SpatialGraphAdapter.catalog && lastWmCatalogRef !== SpatialGraphAdapter.catalog) {
+        lastWmCatalogRef = SpatialGraphAdapter.catalog;
+        inlineWmController.setCatalog(SpatialGraphAdapter.catalog, false);
+      }
+    }
+
+    function ensureInlineWorldMapController() {
+      if (inlineWmController || typeof window === 'undefined' || !window.OpsCryerWorldMap) return inlineWmController;
+      inlineWmController = window.OpsCryerWorldMap.createWorldMapController({
+        ids: {
+          container: 'inline-world-map-stage',
+          canvas: 'inline-wm-canvas',
+          minimap: 'inline-wm-minimap',
+          groupGrid: 'inline-wm-group-grid',
+          groupTabs: 'inline-wm-group-tabs',
+          statusLine: 'inline-wm-status',
+          fpsPill: 'inline-wm-fps-pill',
+          projectionToolbar: 'inline-wm-proj-toolbar',
+          projectionSelect: 'inline-wm-projection-mode',
+          relevanceBanner: 'inline-wm-proj-relevance'
+        },
+        getCurrentCatalog: () => SpatialGraphAdapter.catalog,
+        onProjectionChange: projId => {
+          activeSpatialProjection = normalizeInlineProjection(projId);
+          syncNavQuickProjectionButtons(activeSpatialProjection);
+        },
+        onSelectionChange: (selectedIds, primaryId) => {
+          activeWorldMapSelectedIds = Array.isArray(selectedIds) ? selectedIds.slice() : [];
+          if (primaryId && SpatialGraphAdapter.getNode(primaryId)) {
+            SpatialGraphAdapter.inspectObjectInOuterFrame(primaryId);
+          } else {
+            renderSevenLevelAndTacticalBars(activeWorldMapSelectedIds);
+          }
+        }
+      });
+      if (SpatialGraphAdapter.catalog) {
+        lastWmCatalogRef = SpatialGraphAdapter.catalog;
+        inlineWmController.setCatalog(SpatialGraphAdapter.catalog, false);
+      }
+      const apiBase = (SpatialGraphAdapter && SpatialGraphAdapter.apiBase) ? SpatialGraphAdapter.apiBase : (DEFAULT_API_BASE || '');
+      inlineWmForge = window.OpsCryerWorldMap.initForgeDialog('wm-inline-forge-dialog', () => inlineWmController, apiBase);
+
+      const lm = $('inline-wm-layout-mode');
+      if (lm) {
+        lm.onchange = ev => {
+          inlineWmController.setMode(ev.target.value);
+          syncNavQuickProjectionButtons(inlineWmController.getState().projectionMode);
+        };
+      }
+      if (typeof window.OpsCryerWorldMap.bindProjectionToolbar === 'function') {
+        window.OpsCryerWorldMap.bindProjectionToolbar({
+          toolbarId: 'inline-wm-proj-toolbar',
+          selectId: 'inline-wm-projection-mode',
+          relevanceId: 'inline-wm-proj-relevance',
+          guideTipId: 'inline-wm-proj-guide-tip',
+          getController: () => inlineWmController
+        });
+      } else {
+        const pm = $('inline-wm-projection-mode');
+        if (pm) pm.onchange = ev => inlineWmController.setProjection(ev.target.value);
+      }
+      inlineWmController.setProjection(activeSpatialProjection);
+      const ofb = $('inline-wm-open-forge-btn');
+      if (ofb && inlineWmForge) ofb.onclick = () => inlineWmForge.openForge(inlineWmController.getState().activeSubgroupType);
+      const fal = $('wm-forge-add-layer-btn');
+      if (fal && inlineWmForge) fal.onclick = () => inlineWmForge.addLayerFromInputs();
+      const fsb = $('wm-forge-save-btn');
+      if (fsb && inlineWmForge) fsb.onclick = () => inlineWmForge.saveForgeUnitType();
+      ['wm-forge-primary', 'wm-forge-accent', 'wm-forge-svg-input'].forEach(fid => {
+        const el = $(fid);
+        if (el && inlineWmForge) el.oninput = () => inlineWmForge.renderForgePreview();
+      });
+      const oh = $('inline-wm-ov-health');
+      if (oh) oh.onchange = ev => inlineWmController.setOverlay('health_bar', ev.target.checked);
+      const oc = $('inline-wm-ov-children');
+      if (oc) oc.onchange = ev => inlineWmController.setOverlay('child_count', ev.target.checked);
+      const ob = $('inline-wm-ov-beams');
+      if (ob) ob.onchange = ev => inlineWmController.setOverlay('dependency_beam', ev.target.checked);
+      const oa = $('inline-wm-ov-alerts');
+      if (oa) oa.onchange = ev => inlineWmController.setOverlay('alert_pulse', ev.target.checked);
+      const ib = $('inline-wm-isolate-btn');
+      if (ib) ib.onclick = () => { const s = inlineWmController.getState(); s.isolateSelected = !s.isolateSelected; s.dirtyRender = true; };
+      const fb = $('inline-wm-fit-btn');
+      if (fb) fb.onclick = () => inlineWmController.fitCameraToWorld();
+      const sb = $('inline-wm-scale-600-btn');
+      if (sb) sb.onclick = async () => {
+        try {
+          const st = inlineWmController.getState();
+          const res = await fetch((apiBase || '') + '/api/v1/world-map/layout?mode=' + encodeURIComponent(st.layoutMode) + '&nodes=600');
+          if (res.ok) { const lay = await res.json(); inlineWmController.applyLayout(lay); }
+        } catch (_e) {}
+      };
+      return inlineWmController;
+    }
+
+    function setWorkspaceCanvasView(viewName) {
+      const normalized = (viewName === 'world_map' || viewName === 'local_links') ? viewName : 'boxes';
+      activeCanvasView = normalized;
+      inlineWmActive = (normalized === 'world_map');
+      const boxList = $('browser-children-list');
+      const localStage = $('inline-local-links-stage');
+      const wmStage = $('inline-world-map-stage');
+      const blips = $('rts-minimap-blips');
+      const wmMini = $('inline-wm-minimap');
+      if (boxList && boxList.style) boxList.style.display = (normalized === 'boxes') ? '' : 'none';
+      if (localStage && localStage.style) localStage.style.display = (normalized === 'local_links') ? 'block' : 'none';
+      if (wmStage && wmStage.style) wmStage.style.display = (normalized === 'world_map') ? 'flex' : 'none';
+      if (blips && blips.style) blips.style.display = (normalized === 'world_map') ? 'none' : 'flex';
+      if (wmMini && wmMini.style) wmMini.style.display = (normalized === 'world_map') ? 'block' : 'none';
+      const toggleActive = (id, isOn) => {
+        const el = $(id);
+        if (el && el.classList && el.classList.toggle) el.classList.toggle('active', isOn);
+      };
+      toggleActive('view-local-links-btn', normalized === 'local_links');
+      toggleActive('view-layer-boxes-btn', normalized === 'boxes');
+      toggleActive('toggle-world-map-btn', normalized === 'world_map');
+      const ctrl = inlineWmActive ? ensureInlineWorldMapController() : inlineWmController;
+      if (inlineWmActive && ctrl) {
+        syncInlineWorldMapCatalog();
+        if (activeLevelFilter) ctrl.setLevelFilter(activeLevelFilter);
+        if (activeStatusFilter) ctrl.setStatusFilter(activeStatusFilter);
+        if (normalizeInlineProjection(ctrl.getState().projectionMode) !== activeSpatialProjection) {
+          ctrl.setProjection(activeSpatialProjection);
+        }
+        ctrl.startLoop();
+      } else if (ctrl) {
+        ctrl.stopLoop();
+      }
+      syncNavQuickProjectionButtons(activeSpatialProjection);
+      if (normalized === 'local_links') {
+        renderLocalLinksView(SpatialGraphAdapter.selectedBoxId || SpatialGraphAdapter.currentId);
+      }
+      return activeCanvasView;
+    }
+
+    function toggleWorldMapView(forceState) {
+      const next = typeof forceState === 'boolean' ? forceState : !inlineWmActive;
+      setWorkspaceCanvasView(next ? 'world_map' : 'boxes');
+      return inlineWmActive;
+    }
+
+    function handleInlineWorldMapKeydown(ev) {
+      if (!inlineWmActive || !inlineWmController) return;
+      const tag = (ev && ev.target && ev.target.tagName) ? ev.target.tagName.toUpperCase() : '';
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      const forgeDlg = $('wm-inline-forge-dialog');
+      if (forgeDlg && forgeDlg.open) return;
+      const st = inlineWmController.getState();
+      if (ev.key === 'Alt') { st.altPeekHeld = true; return; }
+      const kl = String((ev && ev.key) || '').toLowerCase();
+      st.keysDown.add(kl);
+      if (ev.key === 'Tab') { if (ev.preventDefault) ev.preventDefault(); inlineWmController.cycleSubgroup(Boolean(ev.shiftKey)); }
+      else if (kl >= '1' && kl <= '9') { inlineWmController.handleControlGroupKey(Number(kl), ev); }
+      else if (kl === 'f') { inlineWmController.centerOnIds(st.selectedIds); }
+      else if (ev.key === ' ' || ev.key === 'Home') { if (ev.preventDefault) ev.preventDefault(); inlineWmController.fitCameraToWorld(); }
+    }
+
+    function handleInlineWorldMapKeyup(ev) {
+      if (!inlineWmController) return;
+      const st = inlineWmController.getState();
+      if (ev && ev.key === 'Alt') st.altPeekHeld = false;
+      st.keysDown.delete(String((ev && ev.key) || '').toLowerCase());
+    }
+
+    if (typeof document !== 'undefined' && document.addEventListener) {
+      document.addEventListener('keyup', handleInlineWorldMapKeyup);
+      document.addEventListener('keydown', handleSpatialKeydown);
+    }
+__WORKSPACE_LAYOUT_JS__
+    async function refreshSwarmC2Panel() {
+      const badge = $('swarm-c2-status-badge');
+      const cards = $('swarm-c2-cards');
+      if (!badge || !cards || typeof fetch !== 'function') return;
+      const apiBase = (SpatialGraphAdapter && SpatialGraphAdapter.apiBase) ? SpatialGraphAdapter.apiBase : (DEFAULT_API_BASE || '');
+      try {
+        const res = await fetch((apiBase || '') + '/api/v1/swarm/c2-summary', {cache: 'no-store'});
+        if (!res.ok) { badge.textContent = 'C2 HTTP ' + res.status; return; }
+        const data = await res.json();
+        if (!data || !data.enabled) {
+          badge.textContent = 'Standalone (set OPSCRYER_SWARM_API_URL to link live C2)';
+          return;
+        }
+        badge.textContent = 'LIVE C2 • ' + String(data.status || 'connected');
+        if (typeof cards.replaceChildren === 'function') {
+          const makeCard = (title, body) => {
+            const d = mk('div');
+            d.className = 'swarm-c2-card';
+            const st = mk('strong');
+            st.textContent = title;
+            const p = mk('div');
+            p.style.color = 'var(--muted)';
+            p.textContent = body;
+            d.appendChild(st);
+            d.appendChild(p);
+            return d;
+          };
+          const ram = data.ramcache || {};
+          const iss = data.issues || {};
+          cards.replaceChildren(
+            makeCard('DDR4 RAMCache', 'Gen ' + String(ram.store_generation || 0) + ' • Hits ' + String(ram.cache_hits || 0) + ' • Misses ' + String(ram.cache_misses || 0)),
+            makeCard('Swarm Issue Broker', String(iss.total_issues || 0) + ' tracked • ' + String(iss.mr_ready_count || 0) + ' MR-ready'),
+            makeCard('ZFS Checkpoint', String(ram.last_checkpoint_at || 'Pending') + ' • ' + String(ram.last_checkpoint_sha256 || '').slice(0, 12))
+          );
+        }
+      } catch (_err) {
+        badge.textContent = 'Swarm C2 Offline / Standalone';
+      }
+    }
+
+    function toggleAskBrainDrawer(forceOpen) {
+      const drawer = $('ask-brain-drawer');
+      const fab = $('ask-brain-fab');
+      if (!drawer) return false;
+      const isOpen = drawer.getAttribute('data-open') === 'true';
+      const nextOpen = (typeof forceOpen === 'boolean') ? forceOpen : !isOpen;
+      drawer.setAttribute('data-open', nextOpen ? 'true' : 'false');
+      if (fab && fab.setAttribute) fab.setAttribute('aria-expanded', nextOpen ? 'true' : 'false');
+      if (nextOpen) {
+        const inp = $('ask-brain-input');
+        if (inp && typeof inp.focus === 'function') inp.focus();
+      }
+      return nextOpen;
+    }
+
+    async function submitAskBrainDrawer(ev) {
+      if (ev && ev.preventDefault) ev.preventDefault();
+      const inp = $('ask-brain-input');
+      const ansEl = $('ask-brain-answer');
+      const linksEl = $('ask-brain-quick-links');
+      const matchesEl = $('ask-brain-matches');
+      const q = String((inp && inp.value) || '').trim();
+      if (!q) {
+        if (ansEl) ansEl.textContent = 'Enter a question about a service, alert, repo, or dashboard.';
+        return;
+      }
+      if (ansEl) ansEl.textContent = 'Querying Central Brain...';
+      if (linksEl && linksEl.replaceChildren) linksEl.replaceChildren();
+      if (matchesEl && matchesEl.replaceChildren) matchesEl.replaceChildren();
+      const apiBase = (SpatialGraphAdapter && SpatialGraphAdapter.apiBase) ? SpatialGraphAdapter.apiBase : (DEFAULT_API_BASE || '');
+      try {
+        const reqHeaders = typeof buildBrainAuthHeaders === 'function' ? buildBrainAuthHeaders() : {};
+        const res = await fetch((apiBase || '') + '/api/v1/live-cluster-ask?q=' + encodeURIComponent(q), {cache: 'no-store', headers: reqHeaders});
+        const data = await res.json();
+        if (!res.ok) {
+          if (ansEl) ansEl.textContent = 'Ask Brain unavailable: ' + String((data && data.error) || ('HTTP ' + res.status));
+          return;
+        }
+        if (ansEl) ansEl.textContent = String(data.answer || data.summary || 'No matching nodes found.');
+        const authSources = Array.isArray(data.auth_required_sources) ? data.auth_required_sources : [];
+        if (typeof renderBrainAuthBanner === 'function') renderBrainAuthBanner(authSources, Boolean(data.user_scoped));
+        const qLinks = Array.isArray(data.quick_links) ? data.quick_links : [];
+        if (authSources.length > 0 && linksEl && linksEl.appendChild) {
+          linksEl.appendChild(SpatialGraphAdapter.makeNodeButton('🔐 Sign In (' + String(authSources[0].provider || authSources[0].plugin || 'source') + ')', 'AUTH', () => openBrainAuthDialog(authSources[0])));
+        }
+        if (linksEl && linksEl.appendChild) {
+          qLinks.slice(0, 6).forEach(lnk => {
+            if (!lnk || !lnk.url) return;
+            const uStr = String(lnk.url).trim();
+            if (!(uStr.indexOf('http://') === 0 || uStr.indexOf('https://') === 0 || (uStr.indexOf('/') === 0 && uStr.indexOf('//') !== 0))) return;
+            linksEl.appendChild(SpatialGraphAdapter.makeNodeButton('↗ ' + String(lnk.label || 'Open').slice(0, 28), String(lnk.system || 'link').toUpperCase(), () => openUrlOrPortal(uStr)));
+          });
+        }
+        const mList = Array.isArray(data.matches) ? data.matches : [];
+        if (matchesEl && matchesEl.appendChild) {
+          mList.slice(0, 5).forEach(m => {
+            if (!m || !m.id) return;
+            matchesEl.appendChild(SpatialGraphAdapter.makeNodeButton('🎯 ' + String(m.label || m.id).slice(0, 28), String(m.status || m.kind || ''), () => {
+              if (SpatialGraphAdapter.getNode(m.id)) SpatialGraphAdapter.selectNode(m.id, false);
+            }));
+          });
+        }
+      } catch (_err) {
+        const hits = SpatialGraphAdapter.filterNodes ? SpatialGraphAdapter.filterNodes(q) : [];
+        if (ansEl) ansEl.textContent = hits.length ? ('Offline local graph match: ' + hits.map(h => h.label).slice(0, 3).join(', ')) : 'Brain API unreachable and no local graph match found.';
+      }
+    }
+
+    async function bootstrapWorkspaceRuntimeConfig() {
+      if (typeof fetch !== 'function' || typeof window === 'undefined' || !window.location || !window.location.hostname) return;
+      const apiBase = (SpatialGraphAdapter && SpatialGraphAdapter.apiBase) ? SpatialGraphAdapter.apiBase : (DEFAULT_API_BASE || '');
+      try {
+        const res = await fetch((apiBase || '') + '/api/v1/workspace/config', {cache: 'no-store'});
+        if (!res.ok) return;
+        const cfg = await res.json();
+        const enabledPlugins = Array.isArray(cfg && cfg.enabled_plugins) ? cfg.enabled_plugins : [];
+        window.OPSCRYER_ENABLED_PLUGINS = enabledPlugins;
+        if (window.workspaceLayoutController && typeof window.workspaceLayoutController.applyRuntimeDefaultLayout === 'function') {
+          window.workspaceLayoutController.applyRuntimeDefaultLayout(cfg && cfg.default_loadout, enabledPlugins);
+        }
+        const links = (cfg && cfg.integrations && Array.isArray(cfg.integrations.nav_links)) ? cfg.integrations.nav_links : [];
+        const strip = $('swarm-c2-links-strip');
+        if (strip && links.length && typeof strip.replaceChildren === 'function') {
+          const nodes = links.map(item => {
+            const a = mk('a');
+            a.href = String(item.href || '/');
+            a.textContent = String(item.label || 'Link');
+            if (a.href.indexOf('http://') === 0 || a.href.indexOf('https://') === 0) {
+              a.target = '_blank';
+              a.rel = 'noopener noreferrer';
+            }
+            a.style.cssText = 'color:var(--cyan);font-size:0.7rem;text-decoration:none;border:1px solid #334155;border-radius:6px;padding:0.15rem 0.45rem;background:#0F172A;';
+            return a;
+          });
+          strip.replaceChildren(...nodes);
+        }
+        const qsNow = new URLSearchParams((window.location && window.location.search) || '');
+        if ((cfg && cfg.integrations && cfg.integrations.dogfood_dataset_default) || qsNow.get('dogfood') === '1') {
+          await toggleDogfoodDataset(true);
+        }
+      } catch (_err) {}
+    }
+
+    let primaryRawCatalog = null;
+    let dogfoodCatalogCache = null;
+    let dogfoodEnabled = false;
+    let datasetTreeStore = null;
+    let datasetTreeSidebarView = null;
+    let applyingDatasetMask = false;
+
+    function ensureDatasetTreeStore() {
+      if (datasetTreeStore || typeof window === 'undefined' || !window.OpsCryerDatasetStore) return datasetTreeStore;
+      datasetTreeStore = window.OpsCryerDatasetStore.createDatasetTreeStore([]);
+      datasetTreeStore.subscribe(snap => {
+        applyDatasetMaskToWorkspace(snap);
+      });
+      datasetTreeSidebarView = window.OpsCryerDatasetStore.bindDatasetTreeSidebar({
+        store: datasetTreeStore,
+        treeId: 'dataset-tree-list',
+        statsId: 'dataset-tree-stats',
+        onFocusGraphNode: gid => {
+          if (!gid || !SpatialGraphAdapter.getNode(gid)) return;
+          SpatialGraphAdapter.selectNode(gid, false);
+          if (activeCanvasView === 'local_links') renderLocalLinksView(gid);
+          if (activeCanvasView === 'world_map' && inlineWmController) inlineWmController.centerOnIds([gid]);
+        }
+      });
+      window.datasetTreeStore = datasetTreeStore;
+      return datasetTreeStore;
+    }
+
+    function buildCombinedRawCatalog() {
+      const pNodes = (primaryRawCatalog && Array.isArray(primaryRawCatalog.nodes)) ? primaryRawCatalog.nodes : [];
+      const pEdges = (primaryRawCatalog && Array.isArray(primaryRawCatalog.edges)) ? primaryRawCatalog.edges : [];
+      const dNodes = (dogfoodEnabled && dogfoodCatalogCache && Array.isArray(dogfoodCatalogCache.nodes)) ? dogfoodCatalogCache.nodes : [];
+      const dEdges = (dogfoodEnabled && dogfoodCatalogCache && Array.isArray(dogfoodCatalogCache.edges)) ? dogfoodCatalogCache.edges : [];
+      const mergedNodes = [];
+      const seen = new Set();
+      pNodes.forEach(n => {
+        if (!n || !n.id || seen.has(String(n.id))) return;
+        seen.add(String(n.id));
+        mergedNodes.push({...n, drilldown_children: Array.isArray(n.drilldown_children) ? n.drilldown_children.slice() : []});
+      });
+      dNodes.forEach(n => {
+        if (!n || !n.id || seen.has(String(n.id))) return;
+        seen.add(String(n.id));
+        mergedNodes.push({...n, drilldown_children: Array.isArray(n.drilldown_children) ? n.drilldown_children.slice() : []});
+      });
+      const mergedEdges = pEdges.concat(dEdges);
+      if (pNodes.length && dNodes.length && dogfoodCatalogCache && dogfoodCatalogCache.root_node_id) {
+        const pRootId = String((primaryRawCatalog && primaryRawCatalog.root_node_id) || pNodes[0].id);
+        const dRootId = String(dogfoodCatalogCache.root_node_id);
+        const pRoot = mergedNodes.find(n => String(n.id) === pRootId);
+        if (pRoot && pRootId !== dRootId && !pRoot.drilldown_children.includes(dRootId)) {
+          pRoot.drilldown_children.push(dRootId);
+          mergedEdges.push({source: pRootId, target: dRootId, relation: 'dogfood_suite_dataset'});
+        }
+      }
+      const baseMeta = primaryRawCatalog ? {...primaryRawCatalog} : (dogfoodCatalogCache ? {...dogfoodCatalogCache} : {});
+      if (!pNodes.length && dogfoodCatalogCache && dogfoodCatalogCache.root_node_id) {
+        baseMeta.root_node_id = dogfoodCatalogCache.root_node_id;
+      }
+      return {...baseMeta, nodes: mergedNodes, edges: mergedEdges};
+    }
+
+    function rebuildDatasetStoreInputs(preserveSelection) {
+      const store = ensureDatasetTreeStore();
+      if (!store) return;
+      const dsList = [];
+      const pNodes = (primaryRawCatalog && Array.isArray(primaryRawCatalog.nodes)) ? primaryRawCatalog.nodes : [];
+      if (pNodes.length) {
+        const pLabel = String((primaryRawCatalog && (primaryRawCatalog.dataset_label || primaryRawCatalog.scope_id || primaryRawCatalog.source)) || 'Primary Active Graph');
+        dsList.push({dataset_id: 'primary_active_graph', label: 'Primary: ' + pLabel, enabled: true, nodes: pNodes});
+      }
+      if (dogfoodEnabled && dogfoodCatalogCache && Array.isArray(dogfoodCatalogCache.nodes) && dogfoodCatalogCache.nodes.length) {
+        dsList.push({
+          dataset_id: String(dogfoodCatalogCache.dataset_id || 'dogfood_3tool_suite'),
+          label: String(dogfoodCatalogCache.dataset_label || 'Dogfood 3-Tool Suite (opscryer + brain + meshworks)'),
+          enabled: true,
+          nodes: dogfoodCatalogCache.nodes
+        });
+      }
+      store.setDatasets(dsList, Boolean(preserveSelection));
+    }
+
+    function syncPrimaryCatalogToDatasetStore(rawCatalog) {
+      if (applyingDatasetMask || !rawCatalog || !Array.isArray(rawCatalog.nodes)) return;
+      primaryRawCatalog = rawCatalog;
+      rebuildDatasetStoreInputs(false);
+    }
+
+    function applyDatasetMaskToWorkspace(snap) {
+      if (applyingDatasetMask || !snap) return;
+      const combined = buildCombinedRawCatalog();
+      const allSelectedNoDogfood = !dogfoodEnabled && snap.totalLeaves > 0 && snap.includedLeaves === snap.totalLeaves && SpatialGraphAdapter.catalog === primaryRawCatalog;
+      if (allSelectedNoDogfood) return;
+      const activeSet = snap.activeGraphNodeIds || new Set();
+      const filteredNodes = combined.nodes
+        .filter(n => activeSet.has(String(n.id)))
+        .map(n => ({...n, drilldown_children: (n.drilldown_children || []).filter(cid => activeSet.has(String(cid)))}));
+      const filteredEdges = combined.edges.filter(e => activeSet.has(String(e.source)) && activeSet.has(String(e.target)));
+      let nextRoot = combined.root_node_id;
+      if (!nextRoot || !activeSet.has(String(nextRoot))) {
+        nextRoot = filteredNodes.length ? String(filteredNodes[0].id) : '';
+      }
+      applyingDatasetMask = true;
+      try {
+        SpatialGraphAdapter.catalog = {...combined, root_node_id: nextRoot, nodes: filteredNodes, edges: filteredEdges};
+        SpatialGraphAdapter.rebuildFastIndex();
+        syncInlineWorldMapCatalog();
+        if (!filteredNodes.length) {
+          SpatialGraphAdapter.currentId = null;
+          SpatialGraphAdapter.selectedBoxId = null;
+          const listEl = $('browser-children-list');
+          if (listEl && typeof listEl.replaceChildren === 'function') {
+            const emptyCard = mk('div');
+            if (emptyCard.style) emptyCard.style.cssText = 'padding:1rem;border:1px dashed var(--amber);border-radius:8px;color:var(--amber);font-size:0.8rem;';
+            emptyCard.textContent = 'All dataset tree branches are unchecked (0 active nodes). Check any dataset, repo, or level in the 🌲 Datasets sidebar to display nodes.';
+            listEl.replaceChildren(emptyCard);
+          }
+          renderSevenLevelAndTacticalBars([]);
+          if (activeCanvasView === 'local_links') renderLocalLinksView('');
+        } else {
+          const keepId = (SpatialGraphAdapter.currentId && activeSet.has(String(SpatialGraphAdapter.currentId)))
+            ? SpatialGraphAdapter.currentId
+            : (nextRoot || String(filteredNodes[0].id));
+          SpatialGraphAdapter.historyStack = (SpatialGraphAdapter.historyStack || []).filter(id => activeSet.has(String(id)));
+          SpatialGraphAdapter.selectNode(keepId, true);
+          if (activeCanvasView === 'local_links') {
+            renderLocalLinksView(SpatialGraphAdapter.selectedBoxId || keepId);
+          }
+        }
+      } finally {
+        applyingDatasetMask = false;
+      }
+    }
+
+    function toggleDatasetSidebar(forceOpen) {
+      if (window.workspaceLayoutController) {
+        return window.workspaceLayoutController.togglePanel('dataset_sidebar', typeof forceOpen === 'boolean' ? forceOpen : undefined);
+      }
+      if (typeof document !== 'undefined' && document.body && document.body.getAttribute) {
+        const cur = document.body.getAttribute('data-panel-dataset-sidebar') === 'on';
+        const next = typeof forceOpen === 'boolean' ? forceOpen : !cur;
+        document.body.setAttribute('data-panel-dataset-sidebar', next ? 'on' : 'off');
+        return next;
+      }
+      return false;
+    }
+
+    async function toggleDogfoodDataset(enabled, explicitPayload) {
+      dogfoodEnabled = Boolean(enabled);
+      const chk = $('ds-toggle-dogfood-chk');
+      if (chk) chk.checked = dogfoodEnabled;
+      if (dogfoodEnabled && explicitPayload && Array.isArray(explicitPayload.nodes)) {
+        dogfoodCatalogCache = explicitPayload;
+      } else if (dogfoodEnabled && !dogfoodCatalogCache && typeof fetch === 'function') {
+        const apiBase = (SpatialGraphAdapter && SpatialGraphAdapter.apiBase) ? SpatialGraphAdapter.apiBase : (DEFAULT_API_BASE || '');
+        try {
+          const res = await fetch((apiBase || '') + '/api/v1/datasets/dogfood', {cache: 'no-store'});
+          if (res.ok) dogfoodCatalogCache = await res.json();
+        } catch (_err) {}
+      }
+      rebuildDatasetStoreInputs(true);
+      if (dogfoodEnabled && dogfoodCatalogCache && dogfoodCatalogCache.root_node_id && (!primaryRawCatalog || !(primaryRawCatalog.nodes || []).length)) {
+        SpatialGraphAdapter.selectNode(dogfoodCatalogCache.root_node_id, true);
+      }
+      return dogfoodEnabled;
+    }
+
+    function focusDogfoodSuiteRoot() {
+      if (!dogfoodEnabled) {
+        toggleDogfoodDataset(true).then(() => {
+          if (dogfoodCatalogCache && dogfoodCatalogCache.root_node_id && SpatialGraphAdapter.getNode(dogfoodCatalogCache.root_node_id)) {
+            SpatialGraphAdapter.selectNode(dogfoodCatalogCache.root_node_id, false);
+          }
+        });
+        return;
+      }
+      if (dogfoodCatalogCache && dogfoodCatalogCache.root_node_id && SpatialGraphAdapter.getNode(dogfoodCatalogCache.root_node_id)) {
+        SpatialGraphAdapter.selectNode(dogfoodCatalogCache.root_node_id, false);
+      }
+    }
+
+    async function runDogfoodSelfEval() {
+      const outEl = $('dataset-eval-output');
+      if (!outEl) return null;
+      if (outEl.style) outEl.style.display = 'block';
+      outEl.textContent = 'Running 3-Tool Self-Understanding Eval...';
+      const apiBase = (SpatialGraphAdapter && SpatialGraphAdapter.apiBase) ? SpatialGraphAdapter.apiBase : (DEFAULT_API_BASE || '');
+      try {
+        const res = await fetch((apiBase || '') + '/api/v1/datasets/dogfood?eval=1', {cache: 'no-store'});
+        if (!res.ok) {
+          outEl.textContent = 'Self-Eval HTTP ' + res.status;
+          return null;
+        }
+        const data = await res.json();
+        dogfoodCatalogCache = data;
+        const ev = data.self_eval || {};
+        const header = (ev.passed ? '✅ VERIFIED PASS' : '❌ FAILED') + ' • ' + String(ev.checks_passed || 0) + '/' + String(ev.checks_executed || 0) + ' checks passed';
+        const lines = [header].concat((ev.checks || []).map(c => (c.passed ? '✓ ' : '✗ ') + String(c.check_id) + ': ' + String(c.detail || '')));
+        outEl.textContent = lines.join(' | ');
+        return ev;
+      } catch (err) {
+        outEl.textContent = 'Self-Eval unavailable offline: ' + String((err && err.message) || 'fetch failed');
+        return null;
+      }
+    }
+
+    function onDatasetTreeSearchInput(val) {
+      const store = ensureDatasetTreeStore();
+      if (store) store.setSearchQuery(val);
+    }
+
+    window.refreshSwarmC2Panel = refreshSwarmC2Panel;
+    window.syncInlineWorldMapCatalog = syncInlineWorldMapCatalog;
+    window.syncPrimaryCatalogToDatasetStore = syncPrimaryCatalogToDatasetStore;
+    window.toggleDatasetSidebar = toggleDatasetSidebar;
+    window.toggleDogfoodDataset = toggleDogfoodDataset;
+    window.toggleAskBrainDrawer = toggleAskBrainDrawer;
+    window.submitAskBrainDrawer = submitAskBrainDrawer;
+    window.openBrainAuthDialog = openBrainAuthDialog;
+    window.submitBrainAuthDialog = submitBrainAuthDialog;
+    window.clearBrainDelegatedAuth = clearBrainDelegatedAuth;
+    window.renderBrainAuthBanner = renderBrainAuthBanner;
+    window.buildBrainAuthHeaders = buildBrainAuthHeaders;
+    window.focusDogfoodSuiteRoot = focusDogfoodSuiteRoot;
+    window.runDogfoodSelfEval = runDogfoodSelfEval;
+    window.onDatasetTreeSearchInput = onDatasetTreeSearchInput;
+    window.setWorkspaceCanvasView = setWorkspaceCanvasView;
+    window.selectSpatialProjectionView = selectSpatialProjectionView;
+    window.toggleWorldMapView = toggleWorldMapView;
+    window.renderLocalLinksView = renderLocalLinksView;
+    window.renderSevenLevelAndTacticalBars = renderSevenLevelAndTacticalBars;
     const OpsCryerHostSnapshotBridge = {
       CONTRACT_VERSION: 1,
       MESSAGE_TYPE: 'OPSCRYER_HOST_SNAPSHOT',
@@ -3887,19 +5974,53 @@ def render_standalone_browser_html(default_api_base: str = "", dataset: dict[str
         }
       }
     };
-    if (typeof document !== 'undefined' && document.addEventListener) {
-      document.addEventListener('keydown', handleSpatialKeydown);
-    }
     OpsCryerHostSnapshotBridge.init();
     if (typeof window !== 'undefined' && window) {
       window.OpsCryerHostSnapshotBridge = OpsCryerHostSnapshotBridge;
     }
     SpatialGraphAdapter.init();
     window.SpatialGraphAdapter = SpatialGraphAdapter;
+    if (typeof window !== 'undefined' && window.OpsCryerWorkspaceLayout) {
+      window.workspaceLayoutController = window.OpsCryerWorkspaceLayout.createWorkspaceLayoutController({
+        footerId: 'rts-bottom-perimeter-console',
+        pageMode: 'browser',
+        bindKeydown: false,
+        getActiveView: () => activeCanvasView,
+        setActiveView: v => setWorkspaceCanvasView(v),
+        setInitialProjection: p => selectSpatialProjectionView(p),
+        onLayoutChange: st => {
+          if (st && st.panels && st.panels.swarm_c2) refreshSwarmC2Panel();
+        }
+      });
+      bootstrapWorkspaceRuntimeConfig();
+    }
   </script>
 </body>
 </html>
 """
+    from dataset_tree_store import build_dataset_tree_store_js
+    from graph_layers import build_graph_layers_js
+    from world_map_engine import build_world_map_engine_js
+    from workspace_layout import (
+        build_workspace_layout_css,
+        build_workspace_layout_dialog_html,
+        build_workspace_layout_js,
+    )
+
+    graph_layers_js = build_graph_layers_js().replace("</", "<\\/")
+    dataset_tree_store_js = build_dataset_tree_store_js().replace("</", "<\\/")
+    world_map_js = build_world_map_engine_js().replace("</", "<\\/")
+    workspace_layout_css = build_workspace_layout_css()
+    workspace_layout_dialog = build_workspace_layout_dialog_html(include_view_switcher=True)
+    workspace_layout_js = build_workspace_layout_js().replace("</", "<\\/")
+    html = (
+        html.replace("__WORKSPACE_LAYOUT_CSS__", workspace_layout_css)
+        .replace("__WORKSPACE_LAYOUT_DIALOG__", workspace_layout_dialog)
+        .replace("__GRAPH_LAYERS_JS__", graph_layers_js)
+        .replace("__DATASET_TREE_STORE_JS__", dataset_tree_store_js)
+        .replace("__WORLD_MAP_ENGINE_JS__", world_map_js)
+        .replace("__WORKSPACE_LAYOUT_JS__", workspace_layout_js)
+    )
     # Escape "</" so embedded JSON can never terminate the <script> element early, and compact <script> whitespace
     s_start = html.index("<script>") + len("<script>")
     s_end = html.index("</script>")
@@ -4147,6 +6268,22 @@ def _build_unified_gateway_catalog(*, include_ecosystem: bool) -> dict[str, Any]
             return _apply_optional_ecosystem_overlay(merged)
         return merged
 
+    if _is_truth_mode_enabled():
+        truth_ws = _get_truth_workspace_dir()
+        if truth_ws is not None:
+            from graph_layers import harvest_workspace_truth_graph
+
+            merged = harvest_workspace_truth_graph(truth_ws)
+            return _apply_optional_ecosystem_overlay(merged) if include_ecosystem else merged
+        if DEFAULT_CATALOG_PATH.is_file():
+            disk_catalog = json.loads(DEFAULT_CATALOG_PATH.read_text(encoding="utf-8"))
+            if isinstance(disk_catalog, dict) and disk_catalog.get("example") is False:
+                disk_catalog["truth_mode"] = True
+                return _apply_optional_ecosystem_overlay(disk_catalog) if include_ecosystem else disk_catalog
+        return _build_empty_truth_catalog(
+            "No live truth source configured (set OPSCRYER_BRAIN_API_URL, OPSCRYER_GRAPH_FILE, or OPSCRYER_TRUTH_WORKSPACE)"
+        )
+
     cluster_catalog = (
         json.loads(DEFAULT_CATALOG_PATH.read_text(encoding="utf-8"))
         if DEFAULT_CATALOG_PATH.is_file()
@@ -4245,6 +6382,8 @@ def _build_frontend_handler(default_api_base: str = "",
         def _get_unified_catalog(cls, *, include_ecosystem: bool) -> dict[str, Any]:
             cache_sig = (
                 "_ON_" if include_ecosystem else "_OFF_",
+                "_TRUTH_" if _is_truth_mode_enabled() else "_STD_",
+                str(_get_truth_workspace_dir() or ""),
                 _ecosystem_mtime_signature() if include_ecosystem else (),
                 _external_graph_mtime_signature(),
             )
@@ -4295,36 +6434,28 @@ def _build_frontend_handler(default_api_base: str = "",
 
             brain_url = _get_brain_api_url()
             if brain_url:
-                try:
-                    req = urllib.request.Request(
-                        f"{brain_url}/healthz",
-                        headers={"User-Agent": "OpsCryer-Browser/2.0"},
-                    )
-                    with urllib.request.urlopen(req, timeout=2.5) as resp:
-                        if resp.status == 200:
-                            return 200, {
-                                "status": "ready",
-                                "graph_loaded": True,
-                                "brain_api_connected": True,
-                                "ai_invoked": False,
-                                "airlock_ready": True,
-                                "config_loaded": True,
-                            }
-                        return 503, {
-                            "status": "not_ready",
-                            "reason": f"Brain API health probe returned status {resp.status}",
-                            "graph_loaded": False,
-                            "brain_api_connected": False,
-                            "ai_invoked": False,
-                        }
-                except Exception as exc:
-                    return 503, {
-                        "status": "not_ready",
-                        "reason": f"Brain API health probe failed: {exc}",
-                        "graph_loaded": False,
-                        "brain_api_connected": False,
+                status_code, ready_res = _proxy_brain_json_request(
+                    brain_url, "/healthz", timeout_s=2.5
+                )
+                if status_code == 200:
+                    return 200, {
+                        "status": "ready",
+                        "graph_loaded": True,
+                        "brain_api_connected": True,
                         "ai_invoked": False,
+                        "airlock_ready": True,
+                        "config_loaded": True,
                     }
+                return 503, {
+                    "status": "not_ready",
+                    "reason": str(
+                        ready_res.get("error")
+                        or f"Brain API health probe returned status {status_code}"
+                    ),
+                    "graph_loaded": False,
+                    "brain_api_connected": False,
+                    "ai_invoked": False,
+                }
 
             failure_reasons: list[str] = []
 
@@ -4641,6 +6772,29 @@ def _build_frontend_handler(default_api_base: str = "",
                     self._send_bytes(200, render_tactical_security_deck_html().encode("utf-8"),
                                      "text/html; charset=utf-8")
                     return
+                if url.path == "/world-map":
+                    from world_map_engine import render_world_map_html
+
+                    if url.query:
+                        raise ValueError("Invalid query parameters")
+                    brain_url = _get_brain_api_url()
+                    wm_catalog: dict[str, Any] | None = None
+                    if brain_url:
+                        st_b, brain_payload = _proxy_brain_json_request(
+                            brain_url, "/api/v1/opscryer/graph?live=0"
+                        )
+                        if st_b == 200 and isinstance(brain_payload, dict) and isinstance(brain_payload.get("nodes"), list):
+                            wm_catalog = brain_payload
+                        elif _is_truth_mode_enabled():
+                            wm_catalog = _build_empty_truth_catalog(
+                                str((brain_payload or {}).get("error") or f"Brain API returned HTTP {st_b}")
+                            )
+                    if wm_catalog is None:
+                        overlay_on = os.environ.get("OPSCRYER_ECOSYSTEM_OVERLAY") == "1"
+                        wm_catalog = deepcopy(self._get_unified_catalog(include_ecosystem=overlay_on))
+                    self._send_bytes(200, render_world_map_html(catalog=wm_catalog).encode("utf-8"),
+                                     "text/html; charset=utf-8")
+                    return
                 if url.path in ("/chat", "/portal") and not url.query:
                     from ticket_chat_portal import render_concierge_chat_html
 
@@ -4733,6 +6887,13 @@ def _build_frontend_handler(default_api_base: str = "",
                     "/api/v1/flight-recorder/capsules": {"capsule_id"},
                     "/api/v1/flight-recorder/export": set(),
                     "/api/v1/flight-recorder/replay": set(),
+                    "/api/v1/world-map/layout": {"scope", "mode", "nodes"},
+                    "/api/v1/world-map/unit-types": set(),
+                    "/api/v1/graph/levels": {"node_ids", "scope"},
+                    "/api/v1/datasets/dogfood": {"eval"},
+                    "/api/v1/datasets/tree": {"include_dogfood", "scope"},
+                    "/api/v1/workspace/config": set(),
+                    "/api/v1/swarm/c2-summary": set(),
                 }
                 if url.path not in allowed:
                     self._send_json(404, {"error": "Unknown API route"})
@@ -4764,49 +6925,221 @@ def _build_frontend_handler(default_api_base: str = "",
                     from openapi_spec import build_openapi_v3_spec
 
                     payload = build_openapi_v3_spec()
+                elif url.path == "/api/v1/world-map/unit-types":
+                    from unit_archetypes import list_unit_types
+
+                    payload = list_unit_types()
+                elif url.path == "/api/v1/workspace/config":
+                    from dataset_tree_store import is_dogfood_dataset_default_enabled
+                    from workspace_layout import build_workspace_config_payload
+
+                    payload = build_workspace_config_payload(
+                        brain_api_enabled=bool(_get_brain_api_url()),
+                        swarm_c2_enabled=bool(_get_swarm_api_url()),
+                        telemetry_api_enabled=bool(_get_telemetry_api_url()),
+                        dogfood_dataset_default=is_dogfood_dataset_default_enabled(),
+                    )
+                    payload["integrations"]["truth_mode"] = _is_truth_mode_enabled()
+                elif url.path == "/api/v1/datasets/dogfood":
+                    from dataset_tree_store import (
+                        build_dogfood_three_tool_dataset,
+                        evaluate_dogfood_self_understanding,
+                    )
+
+                    eval_val = query.get("eval", ["0"])[0]
+                    if eval_val not in {"0", "1"}:
+                        raise ValueError("Invalid query parameters")
+                    payload = build_dogfood_three_tool_dataset()
+                    if eval_val == "1":
+                        payload["self_eval"] = evaluate_dogfood_self_understanding(payload)
+                elif url.path == "/api/v1/datasets/tree":
+                    from dataset_tree_store import (
+                        DOGFOOD_DATASET_ID,
+                        PRIMARY_DATASET_ID,
+                        build_dogfood_three_tool_dataset,
+                        build_normalized_dataset_tree,
+                        is_dogfood_dataset_default_enabled,
+                    )
+
+                    inc_val = query.get("include_dogfood", ["0"])[0]
+                    if inc_val not in {"0", "1"}:
+                        raise ValueError("Invalid query parameters")
+                    scope_val = query.get("scope", [""])[0]
+                    if "scope" in query and not re.match(r"^[a-zA-Z0-9_.-]{1,64}$", scope_val):
+                        raise ValueError("Invalid query parameters")
+                    brain_url = _get_brain_api_url()
+                    if brain_url:
+                        qs_parts = ["live=0"]
+                        if scope_val:
+                            qs_parts.insert(0, f"scope={urllib.parse.quote(scope_val)}")
+                        st_b, brain_payload = _proxy_brain_json_request(
+                            brain_url,
+                            f"/api/v1/opscryer/graph?{'&'.join(qs_parts)}",
+                            extra_headers=_extract_brain_delegated_headers(self.headers),
+                        )
+                        if st_b >= 400 or not isinstance(brain_payload, dict) or not isinstance(brain_payload.get("nodes"), list):
+                            err_body = brain_payload if isinstance(brain_payload, dict) else {"error": "Brain API unavailable"}
+                            self._send_json(st_b if st_b >= 400 else 503, err_body)
+                            return
+                        primary_cat = brain_payload
+                    else:
+                        overlay_on = os.environ.get("OPSCRYER_ECOSYSTEM_OVERLAY") == "1"
+                        primary_cat = deepcopy(self._get_unified_catalog(include_ecosystem=overlay_on))
+                    ds_entries: list[dict[str, Any]] = [
+                        {
+                            "dataset_id": PRIMARY_DATASET_ID,
+                            "label": f"Primary: {primary_cat.get('scope_id') or primary_cat.get('source') or 'active_graph'}",
+                            "enabled_default": True,
+                            "nodes": primary_cat.get("nodes") or [],
+                        }
+                    ]
+                    include_dogfood = inc_val == "1" or is_dogfood_dataset_default_enabled()
+                    if include_dogfood:
+                        df = build_dogfood_three_tool_dataset()
+                        ds_entries.append(
+                            {
+                                "dataset_id": DOGFOOD_DATASET_ID,
+                                "label": str(df.get("dataset_label") or "Dogfood 3-Tool Suite (opscryer + brain + meshworks)"),
+                                "enabled_default": True,
+                                "nodes": df.get("nodes") or [],
+                            }
+                        )
+                    payload = build_normalized_dataset_tree(ds_entries)
+                    payload["dogfood_included"] = include_dogfood
+                    payload["datasets_meta"] = [
+                        {"dataset_id": d["dataset_id"], "label": d["label"], "node_count": len(d["nodes"])}
+                        for d in ds_entries
+                    ]
+                elif url.path == "/api/v1/graph/levels":
+                    from graph_layers import analyze_selection_graph_levels
+
+                    scope_val = query.get("scope", [""])[0]
+                    if "scope" in query and not re.match(r"^[a-zA-Z0-9_.-]{1,64}$", scope_val):
+                        raise ValueError("Invalid query parameters")
+                    raw_ids = query.get("node_ids", [""])[0]
+                    selected_ids: list[str] = []
+                    if raw_ids:
+                        if any(ord(ch) < 32 or ord(ch) == 127 for ch in raw_ids) or len(raw_ids) > 4096:
+                            raise ValueError("Invalid query parameters")
+                        selected_ids = [item.strip() for item in raw_ids.split(",") if item.strip()][:100]
+                    brain_url = _get_brain_api_url()
+                    if brain_url:
+                        qs_parts = ["live=0"]
+                        if scope_val:
+                            qs_parts.insert(0, f"scope={urllib.parse.quote(scope_val)}")
+                        st_b, brain_payload = _proxy_brain_json_request(
+                            brain_url,
+                            f"/api/v1/opscryer/graph?{'&'.join(qs_parts)}",
+                            extra_headers=_extract_brain_delegated_headers(self.headers),
+                        )
+                        if st_b >= 400 or not isinstance(brain_payload, dict) or not isinstance(brain_payload.get("nodes"), list):
+                            err_body = brain_payload if isinstance(brain_payload, dict) else {"error": "Brain API unavailable"}
+                            self._send_json(st_b if st_b >= 400 else 503, err_body)
+                            return
+                        lvl_catalog = brain_payload
+                    else:
+                        overlay_on = os.environ.get("OPSCRYER_ECOSYSTEM_OVERLAY") == "1"
+                        lvl_catalog = deepcopy(self._get_unified_catalog(include_ecosystem=overlay_on))
+                    payload = analyze_selection_graph_levels(lvl_catalog, selected_ids=selected_ids)
+                elif url.path == "/api/v1/swarm/c2-summary":
+                    swarm_url = _get_swarm_api_url()
+                    if not swarm_url:
+                        payload = {
+                            "schema_version": "1.0-swarm-c2-summary",
+                            "enabled": False,
+                            "status": "standalone",
+                            "ramcache": {},
+                            "issues": {"total_issues": 0, "mr_ready_count": 0},
+                        }
+                    else:
+                        st_ram, ram_data = _proxy_brain_json_request(
+                            swarm_url, "/api/v1/ramcache/stats", timeout_s=4.0, include_brain_token=False
+                        )
+                        st_iss, iss_data = _proxy_brain_json_request(
+                            swarm_url, "/api/v1/issues", timeout_s=4.0, include_brain_token=False
+                        )
+                        issues_list = iss_data.get("issues", []) if (st_iss == 200 and isinstance(iss_data, dict)) else []
+                        mr_ready = sum(
+                            1 for item in issues_list
+                            if isinstance(item, dict) and str(item.get("status") or "") == "mr_ready"
+                        )
+                        payload = {
+                            "schema_version": "1.0-swarm-c2-summary",
+                            "enabled": True,
+                            "status": "connected" if (st_ram == 200 or st_iss == 200) else "unreachable",
+                            "ramcache": ram_data if st_ram == 200 else {},
+                            "issues": {"total_issues": len(issues_list), "mr_ready_count": mr_ready},
+                        }
+                elif url.path == "/api/v1/world-map/layout":
+                    from world_map_engine import WORLD_MAP_MODES, build_world_map_layout
+
+                    mode_val = query.get("mode", ["unit_type"])[0]
+                    if mode_val not in WORLD_MAP_MODES:
+                        raise ValueError("Invalid query parameters")
+                    scope_val = query.get("scope", [""])[0]
+                    if "scope" in query and not re.match(r"^[a-zA-Z0-9_.-]{1,64}$", scope_val):
+                        raise ValueError("Invalid query parameters")
+                    if "nodes" in query:
+                        from scale_benchmark import _parse_scale_nodes, generate_synthetic_enterprise_graph
+
+                        wm_catalog = generate_synthetic_enterprise_graph(_parse_scale_nodes(query["nodes"][0]))
+                    else:
+                        brain_url = _get_brain_api_url()
+                        if brain_url:
+                            qs_parts = ["live=0"]
+                            if scope_val:
+                                qs_parts.insert(0, f"scope={urllib.parse.quote(scope_val)}")
+                            status_code, brain_payload = _proxy_brain_json_request(
+                                brain_url,
+                                f"/api/v1/opscryer/graph?{'&'.join(qs_parts)}",
+                                extra_headers=_extract_brain_delegated_headers(self.headers),
+                            )
+                            # Reject non-2xx Brain responses or malformed graph catalogs before computing layout
+                            if status_code >= 400 or not isinstance(brain_payload, dict) or not isinstance(brain_payload.get("nodes"), list):
+                                err_body = brain_payload if isinstance(brain_payload, dict) else {"error": "Brain API unavailable"}
+                                self._send_json(status_code if status_code >= 400 else 503, err_body)
+                                return
+                            wm_catalog = brain_payload
+                        else:
+                            overlay_on = os.environ.get("OPSCRYER_ECOSYSTEM_OVERLAY") == "1"
+                            wm_catalog = deepcopy(self._get_unified_catalog(include_ecosystem=overlay_on))
+                    payload = build_world_map_layout(wm_catalog, mode=mode_val, scope=scope_val)
                 elif url.path == "/api/v1/brain/scopes":
                     brain_url = _get_brain_api_url()
                     if not brain_url:
                         self._send_json(200, {"enabled": False, "scopes": []})
                         return
-                    try:
-                        req = urllib.request.Request(
-                            f"{brain_url}/api/v1/scopes",
-                            headers={"User-Agent": "OpsCryer-Browser/2.0"},
-                        )
-                        with urllib.request.urlopen(req, timeout=_get_brain_proxy_timeout()) as resp:
-                            data = json.loads(resp.read().decode("utf-8"))
-                            self._send_json(resp.status, data)
-                    except urllib.error.HTTPError as err:
-                        try:
-                            err_body = json.loads(err.read().decode("utf-8"))
-                        except Exception:
-                            err_body = {"error": str(err)}
-                        self._send_json(err.code, err_body)
-                    except Exception as exc:
-                        self._send_json(503, {"error": f"Brain API unreachable: {exc}", "enabled": True, "scopes": []})
+                    status_code, payload_out = _proxy_brain_json_request(
+                        brain_url, "/api/v1/scopes"
+                    )
+                    if status_code == 503:
+                        self._send_json(503, {"enabled": True, "scopes": [], **payload_out})
+                    else:
+                        self._send_json(status_code, payload_out)
                     return
                 elif url.path == "/api/v1/brain/status":
                     brain_url = _get_brain_api_url()
                     if not brain_url:
                         self._send_json(200, {"enabled": False})
                         return
-                    try:
-                        req = urllib.request.Request(
-                            f"{brain_url}/healthz",
-                            headers={"User-Agent": "OpsCryer-Browser/2.0"},
+                    status_code, payload_out = _proxy_brain_json_request(
+                        brain_url, "/healthz"
+                    )
+                    if status_code >= 500:
+                        self._send_json(
+                            status_code,
+                            {
+                                "enabled": True,
+                                "brain_api_url": brain_url,
+                                "status": "unreachable",
+                                "error": payload_out.get("error", "Brain API unreachable"),
+                            },
                         )
-                        with urllib.request.urlopen(req, timeout=_get_brain_proxy_timeout()) as resp:
-                            health_json = json.loads(resp.read().decode("utf-8"))
-                            self._send_json(200, {"enabled": True, "brain_api_url": brain_url, **health_json})
-                    except urllib.error.HTTPError as err:
-                        try:
-                            err_body = json.loads(err.read().decode("utf-8"))
-                        except Exception:
-                            err_body = {"error": str(err)}
-                        self._send_json(err.code, {"enabled": True, "brain_api_url": brain_url, **err_body})
-                    except Exception as exc:
-                        self._send_json(503, {"enabled": True, "brain_api_url": brain_url, "status": "unreachable", "error": str(exc)})
+                    else:
+                        self._send_json(
+                            status_code,
+                            {"enabled": True, "brain_api_url": brain_url, **payload_out},
+                        )
                     return
                 elif url.path == "/api/v1/graph/catalog":
                     brain_url = _get_brain_api_url()
@@ -4816,34 +7149,22 @@ def _build_frontend_handler(default_api_base: str = "",
                         qs_parts = [f"live={urllib.parse.quote(live)}"]
                         if scope:
                             qs_parts.insert(0, f"scope={urllib.parse.quote(scope)}")
-                        target_url = f"{brain_url}/api/v1/opscryer/graph?{'&'.join(qs_parts)}"
-                        try:
-                            req = urllib.request.Request(
-                                target_url,
-                                headers={"User-Agent": "OpsCryer-Browser/2.0"},
-                            )
-                            with urllib.request.urlopen(req, timeout=_get_brain_proxy_timeout()) as resp:
-                                payload = json.loads(resp.read().decode("utf-8"))
-                                self._send_json(resp.status, payload)
-                                return
-                        except urllib.error.HTTPError as err:
-                            try:
-                                err_body = json.loads(err.read().decode("utf-8"))
-                            except Exception:
-                                err_body = {"error": str(err)}
-                            self._send_json(err.code, err_body)
-                            return
-                        except Exception as exc:
-                            self._send_json(503, {"error": f"Brain API unreachable: {exc}"})
-                            return
+                        status_code, payload_out = _proxy_brain_json_request(
+                            brain_url,
+                            f"/api/v1/opscryer/graph?{'&'.join(qs_parts)}",
+                            extra_headers=_extract_brain_delegated_headers(self.headers),
+                        )
+                        self._send_json(status_code, payload_out)
+                        return
                     from cluster_diff_engine import DEFAULT_CATALOG_PATH
                     from cluster_harvester import build_live_cluster_spatial_catalog
                     from live_currencies import build_enriched_live_currencies
 
                     overlay_on = os.environ.get("OPSCRYER_ECOSYSTEM_OVERLAY") == "1"
                     ext_graph_active = resolve_external_graph_path() is not None
-                    # Serve the unified gateway catalog whenever an external graph file is mounted or offline ecosystem overlay is enabled.
-                    if ext_graph_active or (overlay_on and query.get("live", ["0"])[0] != "1"):
+                    truth_mode_on = _is_truth_mode_enabled()
+                    # Serve truth-only or external/unified catalog whenever truth mode, external graph, or offline overlay is active.
+                    if truth_mode_on or ext_graph_active or (overlay_on and query.get("live", ["0"])[0] != "1"):
                         payload = deepcopy(self._get_unified_catalog(include_ecosystem=overlay_on))
                     else:
                         payload = (json.loads(DEFAULT_CATALOG_PATH.read_text(encoding="utf-8"))
@@ -4863,8 +7184,8 @@ def _build_frontend_handler(default_api_base: str = "",
                                     key: value for key, value in by_id[node["id"]].items()
                                     if key not in {"node_id", "name"}}
                     else:
-                        # Preserve custom currencies supplied by a mounted external graph file when non-empty.
-                        if not (ext_graph_active and isinstance(payload.get("rts_currencies"), list) and payload["rts_currencies"]):
+                        # Preserve currencies supplied by a mounted external graph or truth-mode catalog when non-empty.
+                        if not ((truth_mode_on or ext_graph_active) and isinstance(payload.get("rts_currencies"), list) and payload["rts_currencies"]):
                             payload["rts_currencies"] = build_enriched_live_currencies()
                     if overlay_on and query.get("live", ["0"])[0] == "1":
                         payload = _apply_optional_ecosystem_overlay(payload)
@@ -5004,6 +7325,16 @@ def _build_frontend_handler(default_api_base: str = "",
                     if (not question.strip()
                             or any(ord(char) < 32 or ord(char) == 127 for char in question)):
                         raise ValueError("Invalid question")
+                    brain_url = _get_brain_api_url()
+                    if brain_url:
+                        status_code, brain_ask = _proxy_brain_json_request(
+                            brain_url,
+                            f"/api/v1/ask?q={urllib.parse.quote(question)}&live=0",
+                            extra_headers=_extract_brain_delegated_headers(self.headers),
+                        )
+                        if status_code == 200 and isinstance(brain_ask, dict):
+                            self._send_json(200, brain_ask)
+                            return
                     payload = answer_operational_question(question)
                     if payload.get("airlock_blocked") is True:
                         self._send_json(403, payload)
@@ -5279,13 +7610,30 @@ def _build_frontend_handler(default_api_base: str = "",
                 }
             )
 
+        def _drain_small_post_body(self) -> None:
+            """Drain bounded unread POST bodies (<=64 KiB) before early 4xx replies to prevent Windows TCP RST."""
+            raw_len = self.headers.get("Content-Length")
+            if not raw_len:
+                return
+            try:
+                n = int(raw_len)
+            except ValueError:
+                return
+            if 0 < n <= 65536:
+                try:
+                    self.rfile.read(n)
+                except OSError:
+                    pass
+
         def do_POST(self) -> None:
             try:
                 if not _is_permitted_gateway_host(self.headers.get("Host", "")):
+                    self._drain_small_post_body()
                     self._send_json(403, {"error": "Forbidden Host header"})
                     return
                 url = urlsplit(self.path)
                 if url.path in ("/healthz", "/readyz", "/metrics"):
+                    self._drain_small_post_body()
                     self._send_json(405, {"error": "method not allowed", "allowed_method": "GET"})
                     return
                 supported_post_routes = {
@@ -5309,8 +7657,10 @@ def _build_frontend_handler(default_api_base: str = "",
                     "/api/v1/flight-recorder/replay",
                     "/api/v1/nanomachine-swarm/cast",
                     "/api/v1/cast/hydrogen",
+                    "/api/v1/world-map/unit-types",
                 }
                 if url.path not in supported_post_routes:
+                    self._drain_small_post_body()
                     if url.path.startswith("/api/v1/"):
                         self._send_json(405, {"error": "method not allowed", "allowed_method": "GET"})
                     else:
@@ -5318,11 +7668,13 @@ def _build_frontend_handler(default_api_base: str = "",
                     return
 
                 if url.query:
+                    self._drain_small_post_body()
                     self._send_json(400, {"error": "Invalid query parameters"})
                     return
 
                 post_ok, post_err_code, post_err_msg = _validate_post_request_security(self.headers)
                 if not post_ok:
+                    self._drain_small_post_body()
                     self._send_json(post_err_code, {"error": post_err_msg})
                     return
 
@@ -5368,24 +7720,15 @@ def _build_frontend_handler(default_api_base: str = "",
                     if not brain_url:
                         self._send_json(503, {"error": "OPSCRYER_BRAIN_API_URL not configured", "status": "unavailable"})
                         return
-                    try:
-                        req = urllib.request.Request(
-                            f"{brain_url}/api/v1/telemetry/refresh",
-                            data=b"{}",
-                            headers={"Content-Type": "application/json", "User-Agent": "OpsCryer-Browser/2.0"},
-                            method="POST",
-                        )
-                        with urllib.request.urlopen(req, timeout=_get_brain_proxy_timeout()) as resp:
-                            res_payload = json.loads(resp.read().decode("utf-8"))
-                            self._send_json(resp.status, res_payload)
-                    except urllib.error.HTTPError as err:
-                        try:
-                            err_body = json.loads(err.read().decode("utf-8"))
-                        except Exception:
-                            err_body = {"error": str(err)}
-                        self._send_json(err.code, err_body)
-                    except Exception as exc:
-                        self._send_json(503, {"error": f"Brain API unreachable: {exc}", "status": "unavailable"})
+                    status_code, res_payload = _proxy_brain_json_request(
+                        brain_url,
+                        "/api/v1/telemetry/refresh",
+                        method="POST",
+                        body_bytes=b"{}",
+                    )
+                    if status_code == 503:
+                        res_payload = {"status": "unavailable", **res_payload}
+                    self._send_json(status_code, res_payload)
                     return
 
                 if url.path == "/api/v1/brain/dynamic-event":
@@ -5396,25 +7739,15 @@ def _build_frontend_handler(default_api_base: str = "",
                     if content_length > 16384:
                         self._send_json(400, {"error": "Request body exceeds 16 KiB limit"})
                         return
-                    try:
-                        req_bytes = json.dumps(body).encode("utf-8")
-                        req = urllib.request.Request(
-                            f"{brain_url}/api/v1/graph/dynamic-event",
-                            data=req_bytes,
-                            headers={"Content-Type": "application/json", "User-Agent": "OpsCryer-Browser/2.0"},
-                            method="POST",
-                        )
-                        with urllib.request.urlopen(req, timeout=_get_brain_proxy_timeout()) as resp:
-                            res_payload = json.loads(resp.read().decode("utf-8"))
-                            self._send_json(resp.status, res_payload)
-                    except urllib.error.HTTPError as err:
-                        try:
-                            err_body = json.loads(err.read().decode("utf-8"))
-                        except Exception:
-                            err_body = {"error": str(err)}
-                        self._send_json(err.code, err_body)
-                    except Exception as exc:
-                        self._send_json(503, {"error": f"Brain API unreachable: {exc}", "status": "unavailable"})
+                    status_code, res_payload = _proxy_brain_json_request(
+                        brain_url,
+                        "/api/v1/graph/dynamic-event",
+                        method="POST",
+                        body_bytes=json.dumps(body).encode("utf-8"),
+                    )
+                    if status_code == 503:
+                        res_payload = {"status": "unavailable", **res_payload}
+                    self._send_json(status_code, res_payload)
                     return
 
                 if url.path.startswith("/api/v1/actions/"):
@@ -5484,6 +7817,20 @@ def _build_frontend_handler(default_api_base: str = "",
                         url.path, method="POST", query={}, body=body
                     )
                     self._send_json(status, payload)
+                    return
+
+                if url.path == "/api/v1/world-map/unit-types":
+                    if content_length > 32768:
+                        self._send_json(400, {"error": "Request body exceeds 32 KiB limit"})
+                        return
+                    from unit_archetypes import upsert_custom_unit_type
+
+                    try:
+                        saved = upsert_custom_unit_type(body)
+                    except ValueError as exc:
+                        self._send_json(400, {"error": str(exc)})
+                        return
+                    self._send_json(200, {"ok": True, "unit_type": saved})
                     return
 
                 if url.path == "/api/v1/cast/hydrogen":

@@ -1,0 +1,16 @@
+{
+  "schema_version": "brain-project-ai/v1",
+  "project_id": "opscryer",
+  "classification": {
+    "rank": 0,
+    "compartments": [],
+    "compartment_locked": false
+  },
+  "uncontrolled_opt_in": true,
+  "ingest_sources": [
+    ".ai/design",
+    ".ai/plans",
+    ".ai/skills",
+    ".agents/skills.json"
+  ]
+}

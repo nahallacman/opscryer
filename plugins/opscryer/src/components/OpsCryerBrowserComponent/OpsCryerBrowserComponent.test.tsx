@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
-import { resolveSafeOpscryerUrl } from './OpsCryerBrowserComponent';
+import {
+  buildEmbeddedOpscryerUrl,
+  resolveSafeOpscryerUrl,
+} from './OpsCryerBrowserComponent';
 
 describe('resolveSafeOpscryerUrl', () => {
   it('falls back to localhost default when empty or undefined', () => {
@@ -30,5 +33,22 @@ describe('resolveSafeOpscryerUrl', () => {
     expect(resolveSafeOpscryerUrl('not a valid url')).toBe(
       'http://localhost:8088',
     );
+  });
+});
+
+describe('buildEmbeddedOpscryerUrl', () => {
+  it('appends preset=iframe by default for compact iframe embedding', () => {
+    expect(buildEmbeddedOpscryerUrl('https://opscryer.example.com')).toBe(
+      'https://opscryer.example.com/?preset=iframe',
+    );
+  });
+
+  it('preserves explicit preset or embed parameters without duplicating them', () => {
+    expect(
+      buildEmbeddedOpscryerUrl('https://opscryer.example.com/?preset=minimal'),
+    ).toBe('https://opscryer.example.com/?preset=minimal');
+    expect(
+      buildEmbeddedOpscryerUrl('https://opscryer.example.com/?embed=1'),
+    ).toBe('https://opscryer.example.com/?embed=1');
   });
 });

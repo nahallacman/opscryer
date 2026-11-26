@@ -6,6 +6,7 @@ from __future__ import annotations
 import http.server
 import json
 import os
+import socket
 import threading
 from typing import Any
 import unittest
@@ -279,6 +280,170 @@ class TestLiveBrainProxy(unittest.TestCase):
             "root-company",
         ):
             self.assertIn(elem_id, html)
+
+    def test_p1_brain_proxy_ssrf_redirects_response_bounds_auth_and_error_redaction(self) -> None:
+        # 1. Validate _get_brain_api_url SSRF/IMDS/credential/query/external-host blocking.
+        for blocked_url in (
+            "http://169.254.169.254/latest/meta-data",
+            "http://[fd00:ec2::254]",
+            "http://metadata.google.internal",
+            "http://user:pass@127.0.0.1:8089",
+            "http://127.0.0.1:8089?x=1",
+            "https://evil.example.org:8089",
+            "https://203.0.113.1:8089",
+        ):
+            with self.subTest(blocked_url=blocked_url):
+                with mock.patch.dict(os.environ, {"OPSCRYER_BRAIN_API_URL": blocked_url}, clear=False):
+                    self.assertEqual(opscryer_browser._get_brain_api_url(), "")
+
+        for allowed_url in (
+            "http://127.0.0.1:8089",
+            "http://brain.platform.svc.cluster.local:8089",
+        ):
+            with self.subTest(allowed_url=allowed_url):
+                with mock.patch.dict(os.environ, {"OPSCRYER_BRAIN_API_URL": allowed_url}, clear=False):
+                    self.assertEqual(opscryer_browser._get_brain_api_url(), allowed_url)
+
+        # 2. Spin up isolated canary + custom upstream servers for redirect, huge payload, and Bearer auth tests.
+        canary_hits = 0
+        captured_auth: list[str] = []
+
+        class _CanaryHandler(http.server.BaseHTTPRequestHandler):
+            def log_message(self, fmt: str, *args: Any) -> None:
+                return
+
+            def do_GET(self) -> None:
+                nonlocal canary_hits
+                canary_hits += 1
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(b"{}")
+
+        canary_srv = http.server.HTTPServer(("127.0.0.1", 0), _CanaryHandler)
+        canary_port = canary_srv.server_address[1]
+        threading.Thread(target=canary_srv.serve_forever, daemon=True).start()
+
+        class _UpstreamHardeningHandler(http.server.BaseHTTPRequestHandler):
+            def log_message(self, fmt: str, *args: Any) -> None:
+                return
+
+            def do_GET(self) -> None:
+                captured_auth.append(self.headers.get("Authorization", ""))
+                if self.path == "/api/v1/scopes":
+                    self.send_response(302)
+                    self.send_header("Location", f"http://127.0.0.1:{canary_port}/secret")
+                    self.end_headers()
+                    return
+                if self.path == "/healthz":
+                    blob = json.dumps({"status": "ok", "pad": "A" * 2048}).encode("utf-8")
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json")
+                    self.send_header("Content-Length", str(len(blob)))
+                    self.end_headers()
+                    self.wfile.write(blob)
+                    return
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(b'{"status":"ok"}')
+
+            def do_POST(self) -> None:
+                captured_auth.append(self.headers.get("Authorization", ""))
+                length = int(self.headers.get("Content-Length", "0"))
+                _ = self.rfile.read(length)
+                body = b'{"status":"ok","action":"refresh"}'
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+        up_srv = http.server.HTTPServer(("127.0.0.1", 0), _UpstreamHardeningHandler)
+        up_url = f"http://127.0.0.1:{up_srv.server_address[1]}"
+        threading.Thread(target=up_srv.serve_forever, daemon=True).start()
+
+        try:
+            with mock.patch.dict(
+                os.environ,
+                {
+                    "OPSCRYER_BRAIN_API_URL": up_url,
+                    "OPSCRYER_BRAIN_API_TOKEN": "test-brain-bearer-token-value",
+                },
+                clear=False,
+            ):
+                # Redirect blocked -> HTTP 502, zero hits on canary listener.
+                with self.assertRaises(urllib.error.HTTPError) as redir_err:
+                    urllib.request.urlopen(
+                        urllib.request.Request(
+                            f"{self.opscryer_url}/api/v1/brain/scopes",
+                            headers={"Host": "localhost"},
+                        ),
+                        timeout=5.0,
+                    )
+                self.assertEqual(redir_err.exception.code, 502)
+                redir_body = json.loads(redir_err.exception.read().decode("utf-8"))
+                self.assertIn("redirect blocked", redir_body["error"].lower())
+                redir_err.exception.close()
+                self.assertEqual(canary_hits, 0)
+
+                # Oversized response (> MAX_BRAIN_PROXY_RESPONSE_BYTES) -> HTTP 502.
+                with mock.patch.object(opscryer_browser, "MAX_BRAIN_PROXY_RESPONSE_BYTES", 1024):
+                    with self.assertRaises(urllib.error.HTTPError) as size_err:
+                        urllib.request.urlopen(
+                            urllib.request.Request(
+                                f"{self.opscryer_url}/api/v1/brain/status",
+                                headers={"Host": "localhost"},
+                            ),
+                            timeout=5.0,
+                        )
+                    self.assertEqual(size_err.exception.code, 502)
+                    size_err.exception.close()
+
+                # POST refresh forwards Bearer Authorization header.
+                with urllib.request.urlopen(
+                    urllib.request.Request(
+                        f"{self.opscryer_url}/api/v1/brain/refresh",
+                        data=b"{}",
+                        headers={"Host": "localhost", "Content-Type": "application/json"},
+                        method="POST",
+                    ),
+                    timeout=5.0,
+                ) as post_resp:
+                    self.assertEqual(post_resp.status, 200)
+
+                self.assertGreaterEqual(len(captured_auth), 3)
+                self.assertTrue(all(h == "Bearer test-brain-bearer-token-value" for h in captured_auth))
+
+            # Unreachable Brain port -> HTTP 503 with sanitized error message.
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.bind(("127.0.0.1", 0))
+                dead_port = int(s.getsockname()[1])
+
+            with mock.patch.dict(
+                os.environ,
+                {"OPSCRYER_BRAIN_API_URL": f"http://127.0.0.1:{dead_port}", "OPSCRYER_BRAIN_API_TOKEN": ""},
+                clear=False,
+            ):
+                with self.assertRaises(urllib.error.HTTPError) as down_err:
+                    urllib.request.urlopen(
+                        urllib.request.Request(
+                            f"{self.opscryer_url}/api/v1/brain/scopes",
+                            headers={"Host": "localhost"},
+                        ),
+                        timeout=5.0,
+                    )
+                self.assertEqual(down_err.exception.code, 503)
+                down_payload = json.loads(down_err.exception.read().decode("utf-8"))
+                down_err.exception.close()
+                self.assertEqual(down_payload["error"], "Brain API unreachable")
+                self.assertNotIn("WinError", down_payload["error"])
+                self.assertNotIn("Errno", down_payload["error"])
+                self.assertNotIn("ConnectionRefusedError", down_payload["error"])
+        finally:
+            up_srv.shutdown()
+            up_srv.server_close()
+            canary_srv.shutdown()
+            canary_srv.server_close()
 
 
 if __name__ == "__main__":

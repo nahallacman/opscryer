@@ -15,7 +15,7 @@ CONTRACT_VERSION = "1.0-separable-spatial-graph-contract"
 ROOT_ID = "root-company"
 _TEST_COMMAND = "python -m unittest discover -s tests -v"
 _EPICS = (
-    ("Spatial Information Tree & RTS Browser", "Zoom from the Citadel through each box and back."),
+    ("Spatial Information Tree & Command Browser", "Zoom from the System Root through each layer and back."),
     ("System-1 Jev Ticket Deflection", "Compare scaffolding, credential and unclassified ticket routes."),
     ("Headless Knowledge Graph & BM25", "Inspect a catalog, then compare search and shortest-path results."),
     ("Argus Container Factory & Code Search", "Review the planned container isolation and code-search boundary."),
@@ -30,7 +30,7 @@ _EPICS = (
 def build_dogfood_zoom_catalog():
     """Return a fresh JSON-compatible SpatialGraphContract v1 storage catalog.
 
-    L0: Citadel and seven aggregate currencies; L1: teams, units, people, epics;
+    L0: System Root and seven aggregate currencies; L1: teams, units, people, epics;
     L2: projects and walkthroughs; L3: feature verification, MRs and pipelines;
     L4: runbook CLI commands and supported Jev predicates. Planned epics are
     explicitly identified; example CI states do not claim successful execution.
@@ -49,7 +49,7 @@ def build_dogfood_zoom_catalog():
                           "relation": "contains"})
         return node
 
-    root = add(ROOT_ID, "OpsCryer Root Citadel", "company_root", 0)
+    root = add(ROOT_ID, "OpsCryer System Root", "company_root", 0)
     team = add("team-platform", "OpsCryer Platform Team", "company_team", 1, root)
     add("unit-dogfood", "Dogfood AI Unit", "ai_agent_unit", 1, team,
         handle="dogfood-agent", telemetry={"state": "EXAMPLE", "routing": "local"})

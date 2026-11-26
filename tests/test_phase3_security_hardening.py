@@ -259,7 +259,7 @@ class OpsCryerHydrogenCastSecurityTests(unittest.TestCase):
         self.assertFalse(browser._is_permitted_gateway_host(f"{public_ip}:8088"))
         self.assertTrue(browser._is_permitted_gateway_host("127.0.0.1:8088"))
         self.assertTrue(browser._is_permitted_gateway_host("10.0.0.5:8088"))
-        self.assertTrue(browser._is_permitted_gateway_host("192.168.1.10:8088"))
+        self.assertTrue(browser._is_permitted_gateway_host("172.20.1.10:8088"))
         self.assertTrue(browser._is_permitted_gateway_host("[::1]:8088"))
         with patch.dict(os.environ, {"OPSCRYER_ALLOWED_HOSTS": "198.51.100.5"}, clear=False):
             self.assertTrue(browser._is_permitted_gateway_host("198.51.100.5:8088"))
@@ -429,8 +429,8 @@ class OpsCryerHydrogenCastSecurityTests(unittest.TestCase):
             self.assertIn(route["execution_mode"], valid_modes)
         summary = route_registry.build_route_registry_summary()
         by_mode = summary["by_execution_mode"]
-        self.assertEqual(sum(v["html_routes"] for v in by_mode.values()), 21)
-        self.assertEqual(sum(v["api_routes"] for v in by_mode.values()), 65)
+        self.assertEqual(sum(v["html_routes"] for v in by_mode.values()), 22)
+        self.assertEqual(sum(v["api_routes"] for v in by_mode.values()), 72)
 
         hub_catalog = opscryer_suite_hub.build_suite_application_catalog()
         for entry in (*hub_catalog["applications"], *hub_catalog["compatibility_and_live_extensions"]):

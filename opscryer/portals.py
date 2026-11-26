@@ -23,6 +23,7 @@ from playbook_studio import build_playbook_studio_catalog, render_playbook_studi
 from secops_vulnerability_cockpit import build_secops_posture_catalog, render_secops_cockpit_html
 from storage_zfs_cockpit import render_storage_cockpit_html
 from ticket_chat_portal import render_concierge_chat_html
+from world_map_engine import render_world_map_html
 
 __all__ = [
     'render_standalone_browser_html',
@@ -44,6 +45,7 @@ __all__ = [
     'render_adapters_html',
     'render_api_docs_html',
     'render_jev_knowledge_html',
+    'render_world_map_html',
     'build_standalone_demo_dataset',
     'build_suite_application_catalog',
     'build_active_incidents_catalog',

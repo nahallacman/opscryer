@@ -77,6 +77,13 @@ _ROUTES = {
     "flight-recorder/capsules": ("List pre-seeded and exported SHA3-256 hash-chained, WOTS+ signed Flight Recorder incident capsules", ("capsule_id",)),
     "flight-recorder/export": ("Export an OPSEC-scrubbed, SHA3-256 hash-chained, WOTS+ PQC-signed JSONL incident capsule", ()),
     "flight-recorder/replay": ("Deterministically verify and replay a Flight Recorder incident capsule at 1x-100x speed", ()),
+    "world-map/layout": ("Deterministic 2.5D/3D World Map layout with unit-type clustering", ("scope", "mode", "nodes")),
+    "world-map/unit-types": ("List or register dynamic World Map unit types and sanitized icons", ()),
+    "graph/levels": ("7-level Knowledge Graph breakdown and selection-scoped stats", ("node_ids", "scope")),
+    "datasets/dogfood": ("Configurable 3-tool self-dogfood dataset (opscryer, brain, meshworks) with optional self-eval", ("eval",)),
+    "datasets/tree": ("Normalized dataset tree hierarchy with DFS pre-order intervals and initial inclusion mask", ("include_dogfood", "scope")),
+    "workspace/config": ("Central workspace panel/row configurator presets and runtime integrations", ()),
+    "swarm/c2-summary": ("Optional headless Swarm C2 DDR4 RAMCache and issue broker summary", ()),
 }
 
 _PARAMETERS = {
@@ -134,6 +141,14 @@ _PARAMETERS = {
                "Filter ITSM tickets by lifecycle status; omit to return all tickets."),
     "capsule_id": ({"type": "string"},
                    "Filter or inspect a specific Flight Recorder incident capsule ID; omit to list all capsules."),
+    "mode": ({"type": "string", "enum": ["unit_type", "domain_squads", "graph_layers", "cloud_3d"], "default": "unit_type"},
+             "World Map clustering layout mode."),
+    "node_ids": ({"type": "string"},
+                 "Optional comma-separated node IDs to compute selection-scoped 7-level breakdown stats."),
+    "eval": ({"type": "string", "enum": ["0", "1"], "default": "0"},
+             "Use 1 to include self-understanding verification checks with explicit positive pass counts."),
+    "include_dogfood": ({"type": "string", "enum": ["0", "1"], "default": "0"},
+                        "Use 1 to include the 3-tool self-dogfood dataset (opscryer + brain + meshworks) in the normalized tree."),
 }
 
 _ROUTE_METHODS: dict[str, str] = {
@@ -153,6 +168,7 @@ _ROUTE_METHODS: dict[str, str] = {
     "itsm/chatops-callback": "post",
     "flight-recorder/export": "post",
     "flight-recorder/replay": "post",
+    "world-map/unit-types": "post",
 }
 
 
@@ -406,6 +422,7 @@ def build_openapi_v3_spec() -> dict:
             "itsm/chatops-callback",
             "flight-recorder/export",
             "flight-recorder/replay",
+            "world-map/unit-types",
         }:
             paths["/api/v1/" + route]["post"] = {
                 "operationId": "post_" + route.replace("/", "_").replace("-", "_").replace(".", "_"),

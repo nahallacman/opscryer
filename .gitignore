@@ -12,6 +12,7 @@ __pycache__/
 dist/
 scratch/
 .scratch/
+.ai/local/
 
 # Live/external Knowledge Graph files must never be committed inside the tool repo
 *company*graph*.json

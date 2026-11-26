@@ -79,7 +79,7 @@ _CLEAN_REPLAY_CATALOG: dict[str, Any] = {
     "nodes": [
         {
             "id": "root-company",
-            "label": "Command Citadel",
+            "label": "Platform Architecture Root",
             "kind": "company_root",
             "namespace": "kube-system",
             "domain": "control_plane",

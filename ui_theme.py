@@ -29,6 +29,7 @@ SHARED_PORTAL_LINKS: tuple[tuple[str, str], ...] = (
     ("/docs", "API Docs"),
     ("/scale", "Scale"),
     ("/tactical-deck", "Tactical Deck"),
+    ("/world-map", "Spatial Map (2D/2.5D/3D)"),
 )
 
 

@@ -29,6 +29,22 @@ export function resolveSafeOpscryerUrl(rawUrl: string | undefined): string {
   return DEFAULT_OPSCRYER_URL;
 }
 
+export function buildEmbeddedOpscryerUrl(
+  rawUrl: string | undefined,
+  preset: string = 'iframe',
+): string {
+  const safeBase = resolveSafeOpscryerUrl(rawUrl);
+  try {
+    const parsed = new URL(safeBase);
+    if (!parsed.searchParams.has('preset') && !parsed.searchParams.has('embed')) {
+      parsed.searchParams.set('preset', preset);
+    }
+    return parsed.toString();
+  } catch {
+    return safeBase;
+  }
+}
+
 export const OpsCryerBrowserComponent = () => {
   const configApi = useApi(configApiRef);
   const opscryerConfigs =
@@ -36,6 +52,7 @@ export const OpsCryerBrowserComponent = () => {
   const opscryerUrl = resolveSafeOpscryerUrl(
     opscryerConfigs[0]?.getOptionalString('baseUrl'),
   );
+  const embedUrl = buildEmbeddedOpscryerUrl(opscryerUrl, 'iframe');
 
   return (
     <Box flexGrow={1} p={3} width="100%">
@@ -71,7 +88,7 @@ export const OpsCryerBrowserComponent = () => {
           />
           <CardContent>
             <iframe
-              src={opscryerUrl}
+              src={embedUrl}
               title="OpsCryer Spatial Browser"
               style={{
                 width: '100%',
