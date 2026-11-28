@@ -25,11 +25,13 @@ SHARED_PORTAL_LINKS: tuple[tuple[str, str], ...] = (
     ("/storage", "Storage"),
     ("/secops", "SecOps"),
     ("/metrics-live", "Live Metrics"),
+    ("/nodes", "Nodes"),
     ("/adapters", "Adapters"),
     ("/docs", "API Docs"),
     ("/scale", "Scale"),
     ("/tactical-deck", "Tactical Deck"),
     ("/world-map", "Spatial Map (2D/2.5D/3D)"),
+    ("/map-2d", "2D World Map"),
 )
 
 

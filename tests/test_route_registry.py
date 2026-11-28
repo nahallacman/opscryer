@@ -28,8 +28,8 @@ class RouteRegistryTests(unittest.TestCase):
         expected = {
             "/", "/hub", "/chat", "/incidents", "/capacity", "/network",
             "/gitops", "/executive", "/simulator", "/playbooks", "/models",
-            "/games", "/kb", "/jev-eval", "/storage", "/secops", "/metrics-live",
-            "/adapters", "/docs", "/scale", "/tactical-deck", "/world-map",
+            "/games", "/kb", "/jev-eval", "/storage", "/secops", "/metrics-live", "/nodes",
+            "/adapters", "/docs", "/scale", "/tactical-deck", "/world-map", "/map-2d",
         }
         self.assertIsInstance(HTML_PORTAL_ROUTES, tuple)
         self.assertEqual({route["path"] for route in HTML_PORTAL_ROUTES}, expected)
@@ -70,13 +70,13 @@ class RouteRegistryTests(unittest.TestCase):
 
     def test_summary_counts_and_independence(self):
         summary = build_route_registry_summary()
-        self.assertEqual(summary["total_html_routes"], 22)
-        self.assertEqual(summary["total_api_routes"], 72)
+        self.assertEqual(summary["total_html_routes"], 24)
+        self.assertEqual(summary["total_api_routes"], 75)
         self.assertEqual(summary["by_subsystem"], {
             "core": {"html_routes": 0, "api_routes": 12},
-            "live": {"html_routes": 1, "api_routes": 9},
+            "live": {"html_routes": 2, "api_routes": 10},
             "security": {"html_routes": 0, "api_routes": 21},
-            "portals": {"html_routes": 21, "api_routes": 30},
+            "portals": {"html_routes": 22, "api_routes": 32},
         })
         json.dumps(summary)
         summary["by_subsystem"]["core"]["api_routes"] = -1

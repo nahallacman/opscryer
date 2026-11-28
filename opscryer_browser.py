@@ -761,6 +761,84 @@ def _is_truth_mode_enabled() -> bool:
     return raw in {"1", "true", "yes", "on"}
 
 
+def _resolve_gateway_mls_clearance() -> tuple[int, list[str]]:
+    """Read OpsCryer gateway MLS viewer clearance from environment; fail closed to (0, []) on invalid values."""
+    raw_rank = os.environ.get("OPSCRYER_VIEWER_RANK", "0").strip()
+    try:
+        rank = int(raw_rank) if raw_rank else 0
+        if rank < 0:
+            rank = 0
+    except ValueError:
+        rank = 0
+    raw_comps = os.environ.get("OPSCRYER_VIEWER_COMPARTMENTS", "")
+    comps = sorted({c.strip() for c in raw_comps.split(",") if c.strip()})
+    return rank, comps
+
+
+def _filter_gateway_catalog_by_mls(payload: Any) -> Any:
+    """Apply fail-closed MLS dominance filtering to any spatial graph catalog served by the OpsCryer HTTP gateway."""
+    if not isinstance(payload, dict) or not isinstance(payload.get("nodes"), list):
+        return payload
+    from opscryer.bridge.opscryer_bridge import _extract_node_mls, filter_spatial_catalog_by_clearance
+
+    had_posture = "security_posture" in payload
+    has_mls_nodes = any(isinstance(n, dict) and _extract_node_mls(n) is not None for n in payload.get("nodes", []))
+    explicit_env = bool(
+        os.environ.get("OPSCRYER_VIEWER_RANK", "").strip()
+        or os.environ.get("OPSCRYER_VIEWER_COMPARTMENTS", "").strip()
+    )
+    viewer_rank, viewer_comps = _resolve_gateway_mls_clearance()
+    filtered = filter_spatial_catalog_by_clearance(
+        payload,
+        viewer_rank=viewer_rank,
+        viewer_compartments=viewer_comps,
+        system_high=False,
+    )
+    posture = filtered.get("security_posture") or {}
+    # Preserve exact schema invariance on 100% unclassified catalogs unless MLS filtering occurred or env clearance was set.
+    if not (
+        had_posture
+        or has_mls_nodes
+        or explicit_env
+        or posture.get("stripped_opaque_count", 0) > 0
+        or posture.get("redacted_stub_count", 0) > 0
+    ):
+        filtered.pop("security_posture", None)
+    return filtered
+
+
+def _is_sse_chunk_permitted_by_mls(chunk: str, viewer_rank: int, viewer_compartments: list[str]) -> bool:
+    """Suppress SSE events whose embedded MLS metadata is not dominated by the active gateway clearance."""
+    from opscryer.bridge.opscryer_bridge import _extract_node_mls
+
+    comp_set = frozenset(viewer_compartments)
+    for line in chunk.splitlines():
+        if not line.startswith("data:"):
+            continue
+        raw_json = line[len("data:"):].strip()
+        if not raw_json:
+            continue
+        try:
+            obj = json.loads(raw_json)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(obj, dict):
+            continue
+        # Inspect both the outer event envelope and nested event.data payload for any MLS metadata.
+        candidates = [obj]
+        if isinstance(obj.get("data"), dict):
+            candidates.append(obj["data"])
+        for cand in candidates:
+            mls = _extract_node_mls(cand)
+            if mls is None:
+                continue
+            node_rank = int(mls.get("classification_rank", 0))
+            node_comps = frozenset(str(c).strip() for c in (mls.get("compartments") or []) if str(c).strip())
+            if not (viewer_rank >= node_rank and node_comps.issubset(comp_set)):
+                return False
+    return True
+
+
 def _get_truth_workspace_dir() -> Path | None:
     """Return an optional local workspace path configured via OPSCRYER_TRUTH_WORKSPACE."""
     raw = os.environ.get("OPSCRYER_TRUTH_WORKSPACE", "").strip()
@@ -807,6 +885,34 @@ def _get_brain_proxy_timeout() -> float:
         return max(1.0, min(float(os.environ.get("OPSCRYER_BRAIN_TIMEOUT", "15.0") or 15.0), 60.0))
     except Exception:
         return 15.0
+
+
+_GRAPH_SOURCE_ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
+_MAX_GRAPH_SOURCES = 32
+
+
+def _validate_graph_sources_param(raw_sources: str) -> list[str]:
+    """Strictly validate a comma-separated ?sources= query param fail-closed.
+
+    Each source ID must match ``^[a-z0-9][a-z0-9_-]{0,63}$``.
+    Raises ValueError if empty, oversized, or containing any malformed/unsafe ID.
+    """
+    if not isinstance(raw_sources, str) or not raw_sources:
+        raise ValueError("Invalid query parameters")
+    if any(ch.isspace() or ord(ch) < 32 or ord(ch) == 127 for ch in raw_sources):
+        raise ValueError("Invalid query parameters")
+    parts = raw_sources.split(",")
+    if len(parts) > _MAX_GRAPH_SOURCES:
+        raise ValueError("Invalid query parameters")
+    validated: list[str] = []
+    seen: set[str] = set()
+    for item in parts:
+        if not _GRAPH_SOURCE_ID_RE.match(item):
+            raise ValueError("Invalid query parameters")
+        if item not in seen:
+            seen.add(item)
+            validated.append(item)
+    return validated
 
 
 _DELEGATED_AUTH_HEADER_NAMES: tuple[str, ...] = (
@@ -1678,6 +1784,146 @@ def render_standalone_browser_html(default_api_base: str = "", dataset: dict[str
       box-shadow: 0 4px 16px rgba(0, 0, 0, 0.65);
       z-index: 40;
       flex-shrink: 0;
+    }
+    /* OPT-IN KNOWLEDGE GRAPH SOURCES PANEL */
+    section#kg-sources-panel {
+      display: none;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.55rem;
+      flex-wrap: wrap;
+      padding: 0.34rem 0.9rem;
+      background: linear-gradient(90deg, rgba(11, 18, 34, 0.96) 0%, rgba(17, 28, 51, 0.92) 100%);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+      z-index: 36;
+    }
+    .kg-sources-header {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      flex-shrink: 0;
+    }
+    .kg-sources-title {
+      font-size: 0.72rem;
+      font-weight: 800;
+      color: var(--cyan);
+      letter-spacing: 0.02em;
+    }
+    .kg-sources-list {
+      display: flex;
+      align-items: center;
+      gap: 0.45rem;
+      flex-wrap: wrap;
+      flex: 1;
+      min-width: 0;
+    }
+    .kg-source-row {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.38rem;
+      padding: 0.2rem 0.52rem;
+      border-radius: 7px;
+      background: rgba(15, 23, 42, 0.9);
+      border: 1px solid #334155;
+      font-size: 0.71rem;
+      transition: border-color 0.12s ease, background 0.12s ease;
+    }
+    .kg-source-row:hover {
+      border-color: var(--cyan);
+      background: rgba(56, 189, 248, 0.1);
+    }
+    .kg-source-row.active-source {
+      border-color: var(--purple);
+      background: rgba(168, 85, 247, 0.14);
+    }
+    .kg-source-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.34rem;
+      cursor: pointer;
+      color: var(--text);
+      font-weight: 600;
+    }
+    .kg-source-checkbox {
+      accent-color: var(--cyan);
+      cursor: pointer;
+      margin: 0;
+      padding: 0;
+      width: 13px;
+      height: 13px;
+    }
+    .kg-source-count {
+      font-size: 0.64rem;
+      font-weight: 700;
+      padding: 0.08rem 0.36rem;
+      border-radius: 999px;
+      background: rgba(56, 189, 248, 0.12);
+      border: 1px solid rgba(56, 189, 248, 0.35);
+      color: var(--cyan);
+    }
+    .kg-source-status {
+      font-size: 0.62rem;
+      font-weight: 700;
+      padding: 0.08rem 0.36rem;
+      border-radius: 999px;
+      border: 1px solid #334155;
+      color: var(--muted);
+      background: rgba(15, 23, 42, 0.85);
+    }
+    .kg-source-status.kg-status-gitlab-live {
+      border-color: var(--green);
+      color: var(--green);
+      background: rgba(34, 197, 94, 0.12);
+    }
+    .kg-source-status.kg-status-local-file {
+      border-color: var(--cyan);
+      color: var(--cyan);
+      background: rgba(56, 189, 248, 0.12);
+    }
+    .kg-source-status.kg-status-stale-cache {
+      border-color: var(--amber);
+      color: var(--amber);
+      background: rgba(245, 158, 11, 0.14);
+    }
+    .kg-source-status.kg-status-unavailable {
+      border-color: var(--red);
+      color: var(--red);
+      background: rgba(239, 68, 68, 0.14);
+    }
+    .kg-source-docs-link {
+      font-size: 0.66rem;
+      font-weight: 700;
+      color: var(--amber);
+      text-decoration: none;
+      padding: 0.08rem 0.36rem;
+      border-radius: 5px;
+      border: 1px solid rgba(245, 158, 11, 0.38);
+      background: rgba(245, 158, 11, 0.08);
+    }
+    .kg-source-docs-link:hover {
+      border-color: var(--amber);
+      background: rgba(245, 158, 11, 0.2);
+    }
+    .kg-sources-refresh-btn {
+      padding: 0.18rem 0.45rem;
+      font-size: 0.68rem;
+      border-color: rgba(56, 189, 248, 0.45);
+      color: var(--cyan);
+      background: rgba(15, 23, 42, 0.85);
+    }
+    .kg-sources-empty {
+      font-size: 0.7rem;
+      color: var(--muted);
+    }
+    #browser-focal-links {
+      max-height: 44px;
+      overflow-y: auto;
+      justify-content: flex-end;
+    }
+    #browser-focal-links .node-btn {
+      padding: 0.14rem 0.42rem;
+      font-size: 0.65rem;
     }
     /* FAST OPS DEPLOYMENT / SERVICE / DOC / AI AGENT FINDER BAR */
     section#fast-ops-finder-bar {
@@ -2551,6 +2797,7 @@ __WORKSPACE_LAYOUT_CSS__
   <nav class="page-navigation" aria-label="Portal navigation">
     <div class="nav-pill-group">
       <a href="/world-map">🌐 Spatial Map (2D/2.5D/3D)</a>
+      <a href="/map-2d">🗺️ 2D World Map</a>
       <a href="/chat">Ticket Concierge Portal</a>
       <a href="/tactical-deck" style="border-color:var(--amber);color:var(--amber);">Tactical Deck</a>
       <a href="/hub">🧭 Suite Hub</a>
@@ -2566,6 +2813,7 @@ __WORKSPACE_LAYOUT_CSS__
       <a href="/playbooks">📜 Playbooks</a>
       <a href="/simulator">🌪️ GameDay &amp; Replay</a>
       <a href="/scale">📈 60 FPS Scale</a>
+      <a href="/nodes">🖥️ Nodes</a>
       <a href="/metrics-live">📡 Live Metrics</a>
       <a href="/docs">📖 OpenAPI Docs</a>
     </div>
@@ -2621,6 +2869,17 @@ __WORKSPACE_LAYOUT_CSS__
       <button onclick="toggleTacticalDrawer()" style="border-color:var(--purple);color:var(--purple);">🛠️ Tools</button>
     </div>
   </header>
+
+  <!-- OPT-IN KNOWLEDGE GRAPH SOURCES HUD PANEL -->
+  <section id="kg-sources-panel" aria-label="Knowledge Sources" data-brain-connected="false" data-source-count="0" style="display:none;">
+    <div class="kg-sources-header">
+      <strong class="kg-sources-title">📚 Knowledge Sources</strong>
+      <span class="badge" id="kg-sources-active-badge" style="border-color:var(--purple);color:var(--purple);">0 active</span>
+      <button id="kg-sources-refresh-btn" class="kg-sources-refresh-btn" type="button" title="Refresh knowledge sources from Brain">↻ Refresh</button>
+    </div>
+    <div id="kg-sources-list" class="kg-sources-list" role="group" aria-label="External Knowledge Sources"></div>
+    <span id="kg-sources-empty-state" class="kg-sources-empty" style="display:none;">No external knowledge sources available</span>
+  </section>
 
   <!-- ALWAYS-VISIBLE FAST FINDER & QUESTION BAR FOR HUMANS & AI AGENTS -->
   <section id="fast-ops-finder-bar" aria-label="Fast Ops Deployment, Service, Doc and Question Finder">
@@ -3099,6 +3358,8 @@ __WORKSPACE_LAYOUT_DIALOG__
       mode: 'STANDALONE_MOCK',
       apiBase: DEFAULT_API_BASE || '',
       currentScope: '',
+      availableSources: [],
+      selectedSources: [],
       catalog: STANDALONE_DEMO_DATASET,
       nodeMap: new Map(),
       inboundMap: new Map(),
@@ -3177,6 +3438,18 @@ __WORKSPACE_LAYOUT_DIALOG__
         }
       },
 
+      buildCatalogQueryString() {
+        const parts = [];
+        if (this.currentScope) {
+          parts.push('scope=' + encodeURIComponent(this.currentScope));
+        }
+        const active = (this.selectedSources || []).filter(id => isValidSourceId(id));
+        if (active.length > 0) {
+          parts.push('sources=' + active.map(id => encodeURIComponent(id)).join(','));
+        }
+        return parts.length ? ('?' + parts.join('&')) : '';
+      },
+
       async init() {
         const params = new URLSearchParams((window.location && window.location.search) || '');
         if (params.get('api')) {
@@ -3191,7 +3464,7 @@ __WORKSPACE_LAYOUT_DIALOG__
         $('backend-api-input').value = this.apiBase;
         $('adapter-select').value = this.mode;
         bindUnifiedNavigationDock();
-        await initBrainControls();
+        await Promise.all([initBrainControls(), initKnowledgeSources(false)]);
         if (window.location && window.location.hostname && params.get('mode') !== 'mock' && !params.get('api')) {
           await loadUnifiedClusterAndSubsystemGraph();
           return;
@@ -3216,6 +3489,9 @@ __WORKSPACE_LAYOUT_DIALOG__
         }
         if (rkind === 'Ingress' || kind === 'kubernetes_ingress') {
           return {archetype_id: 'K8S_INGRESS', archetype_title: 'K8s TLS Ingress Gateway', crest_icon: '🌐', border_color: '#F59E0B', vital_label: 'TLS Route', vital_pct: 100};
+        }
+        if (kind === 'knowledge_concept' || kind === 'concept' || kind === 'external_knowledge' || kind === 'knowledge_source' || kind === 'reference_doc') {
+          return {archetype_id: 'KNOWLEDGE_CONCEPT', archetype_title: 'Grounded Knowledge Concept', crest_icon: '🧠', border_color: '#A855F7', vital_label: 'Grounding Freshness', vital_pct: 100};
         }
         if (ARCHETYPE_MAP[kind]) return ARCHETYPE_MAP[kind];
         return {archetype_id: 'ENGINEERING_TEAM', archetype_title: 'Engineering Team', crest_icon: '⬢', border_color: '#38BDF8', vital_label: 'Readiness', vital_pct: 94};
@@ -3279,9 +3555,9 @@ __WORKSPACE_LAYOUT_DIALOG__
           return;
         }
         try {
-          const scopeParam = this.currentScope ? ('?scope=' + encodeURIComponent(this.currentScope)) : '';
+          const qs = this.buildCatalogQueryString();
           const reqHeaders = typeof buildBrainAuthHeaders === 'function' ? buildBrainAuthHeaders() : {};
-          const res = await fetch((this.apiBase || '') + '/api/v1/graph/catalog' + scopeParam, {cache: 'no-store', headers: reqHeaders});
+          const res = await fetch((this.apiBase || '') + '/api/v1/graph/catalog' + qs, {cache: 'no-store', headers: reqHeaders});
           const data = await res.json();
           if (res.ok && data && Array.isArray(data.nodes)) {
             this.catalog = data;
@@ -3295,7 +3571,8 @@ __WORKSPACE_LAYOUT_DIALOG__
                 truthBanner.textContent = '⚠️ Full-Truth Mode Active: ' + String(data.error || 'No live Knowledge Graph nodes returned by backend (synthetic fallback disabled).');
               }
             } else if (this.catalog && this.catalog.ai_invoked === false) {
-              badge.textContent = '🧠 LIVE BRAIN KG (ZERO-AI) • ' + (this.catalog.scope_id || this.currentScope || 'default') + ' • ' + String(this.catalog.ecosystem_revision || '').slice(0, 14);
+              const srcSuffix = (this.selectedSources && this.selectedSources.length) ? (' • +' + this.selectedSources.length + ' KB') : '';
+              badge.textContent = '🧠 LIVE BRAIN KG (ZERO-AI) • ' + (this.catalog.scope_id || this.currentScope || 'default') + srcSuffix + ' • ' + String(this.catalog.ecosystem_revision || '').slice(0, 14);
             } else if (this.catalog && this.catalog.truth_mode) {
               badge.textContent = '✅ FULL-TRUTH KG (' + this.catalog.nodes.length + ' NODES)';
             } else {
@@ -3614,10 +3891,9 @@ __WORKSPACE_LAYOUT_DIALOG__
         $('rts-slot-4-upkeep').textContent = String(telemetryText || node.status || node.summary || 'Nominal').slice(0, 44);
         $('rts-slot-5-encapsulated').textContent = childCount + ' Child Boxes';
         const slot6 = $('rts-slot-6-control');
-        const primaryUrlStr = String(node.primary_url || '').trim();
-        const isClickablePrimary = primaryUrlStr.indexOf('http://') === 0 || primaryUrlStr.indexOf('https://') === 0 || (primaryUrlStr.indexOf('/') === 0 && primaryUrlStr.indexOf('//') !== 0);
+        const primaryUrlStr = resolveSafeNodeUrl(node.canonical_url || node.primary_url || '');
         if (slot6) {
-          if (isClickablePrimary && typeof slot6.replaceChildren === 'function' && typeof mk === 'function') {
+          if (primaryUrlStr && typeof slot6.replaceChildren === 'function' && typeof mk === 'function') {
             const sBtn = mk('button');
             sBtn.type = 'button';
             sBtn.className = 'slot-link-btn';
@@ -3633,21 +3909,38 @@ __WORKSPACE_LAYOUT_DIALOG__
         if (linksEl) {
           linksEl.replaceChildren();
           const seenUrls = new Set();
-          const cpUrls = Array.isArray(node.control_plane_urls) ? node.control_plane_urls : [];
-          if (isClickablePrimary && primaryUrlStr !== '/api/v1/opscryer/graph') {
-            seenUrls.add(primaryUrlStr);
-            linksEl.appendChild(this.makeNodeButton('↗ Open Primary', primaryUrlStr.slice(0, 38), () => openUrlOrPortal(primaryUrlStr)));
+          const addInspectorLink = (btnLabel, rawUrl, subHint) => {
+            const safeUrl = resolveSafeNodeUrl(rawUrl);
+            if (!safeUrl || safeUrl === '/api/v1/opscryer/graph' || seenUrls.has(safeUrl)) return;
+            seenUrls.add(safeUrl);
+            linksEl.appendChild(this.makeNodeButton(btnLabel, String(subHint || safeUrl).slice(0, 48), () => openUrlOrPortal(safeUrl)));
+          };
+          if (node.canonical_url) {
+            addInspectorLink('↗ Primary Source', String(node.canonical_url), String(node.canonical_url));
           }
-          cpUrls.slice(0, 8).forEach(item => {
-            if (!item || !item.url) return;
-            const uStr = String(item.url).trim();
-            if (!uStr || seenUrls.has(uStr)) return;
-            const okScheme = uStr.indexOf('http://') === 0 || uStr.indexOf('https://') === 0 || (uStr.indexOf('/') === 0 && uStr.indexOf('//') !== 0);
-            if (!okScheme) return;
-            seenUrls.add(uStr);
-            const sysTag = String(item.system || 'link').toUpperCase();
-            linksEl.appendChild(this.makeNodeButton('↗ ' + String(item.label || sysTag).slice(0, 28), sysTag, () => openUrlOrPortal(uStr)));
-          });
+          if (node.primary_url && String(node.primary_url) !== String(node.canonical_url || '')) {
+            addInspectorLink('↗ Open Portal / Control', String(node.primary_url), String(node.primary_url));
+          }
+          const cpUrls = node.control_plane_urls;
+          if (Array.isArray(cpUrls)) {
+            cpUrls.slice(0, 8).forEach(entry => {
+              if (!entry) return;
+              if (typeof entry === 'string') {
+                addInspectorLink('🔗 Control Plane ↗', entry, entry);
+              } else if (typeof entry === 'object' && entry.url) {
+                const rawLbl = String(entry.label || entry.system || 'Control Plane');
+                const isDocs = /techdocs|docs/i.test(rawLbl + ' ' + String(entry.system || '') + ' ' + String(entry.url || ''));
+                addInspectorLink((isDocs ? '📘 ' : '🔗 ') + rawLbl + ' ↗', String(entry.url), String(entry.system || entry.url));
+              }
+            });
+          } else if (cpUrls && typeof cpUrls === 'object') {
+            Object.entries(cpUrls).slice(0, 8).forEach(([k, v]) => {
+              if (typeof v === 'string' && v) {
+                const isDocs = /techdocs|docs/i.test(String(k) + ' ' + v);
+                addInspectorLink((isDocs ? '📘 ' : '🔗 ') + String(k) + ' ↗', v, v);
+              }
+            });
+          }
           const nanoswarmActive = typeof window !== 'undefined' && Array.isArray(window.OPSCRYER_ENABLED_PLUGINS) && window.OPSCRYER_ENABLED_PLUGINS.indexOf('nanoswarm') >= 0;
           if (nanoswarmActive && (node.kind === 'ai_agent_unit' || String(node.id || '').startsWith('swarm-'))) {
             linksEl.appendChild(this.makeNodeButton('⚡ Cast Swarm Ability (μ/σ)', 'Non-Blocking HUD', () => toggleNanomachineSwarmHud(true)));
@@ -3937,7 +4230,7 @@ __WORKSPACE_LAYOUT_DIALOG__
         a.addEventListener('click', ev => {
           if (ev && (ev.ctrlKey || ev.metaKey || ev.shiftKey)) return;
           const href = a.getAttribute ? a.getAttribute('href') : '';
-          if (href && href.startsWith('/') && href !== '/world-map') {
+          if (href && href.startsWith('/') && href !== '/world-map' && href !== '/map-2d') {
             if (ev && typeof ev.preventDefault === 'function') ev.preventDefault();
             openIntegratedOpsTool(href, true);
           }
@@ -3945,15 +4238,59 @@ __WORKSPACE_LAYOUT_DIALOG__
       });
     }
 
+    function isValidSourceId(sourceId) {
+      return /^[a-z0-9][a-z0-9_-]{0,63}$/.test(String(sourceId || ''));
+    }
+
+    function resolveSafeNodeUrl(rawUrl) {
+      const raw = String(rawUrl || '').trim();
+      if (!raw) return '';
+      for (let i = 0; i < raw.length; i++) {
+        const c = raw.charCodeAt(i);
+        if (c < 32 || c === 127) return '';
+      }
+      if (/^https?:\/\/[^\s<>"']+$/i.test(raw)) return raw;
+      if (raw.startsWith('/') && !raw.startsWith('//') && !raw.startsWith('/\\') && !/[\s<>"']/.test(raw)) {
+        return raw;
+      }
+      return '';
+    }
+
+    function resolveExternalDocsUrl(rawUrl) {
+      const safe = resolveSafeNodeUrl(rawUrl);
+      if (!safe) return '';
+      if (/^https?:\/\//i.test(safe)) return safe;
+      let hostBase = '';
+      try {
+        if (typeof OpsCryerHostSnapshotBridge !== 'undefined' && OpsCryerHostSnapshotBridge) {
+          const explicit = OpsCryerHostSnapshotBridge._collectConfiguredOrigins(false);
+          if (explicit && explicit.length > 0) hostBase = explicit[0];
+        }
+        if (!hostBase && typeof window !== 'undefined' && window && window.parent && window.parent !== window && typeof document !== 'undefined' && document && document.referrer) {
+          const refOrigin = OpsCryerHostSnapshotBridge.normalizeOrigin(new URL(document.referrer).origin);
+          if (refOrigin) hostBase = refOrigin;
+        }
+      } catch (_e) {}
+      return hostBase ? (hostBase + safe) : safe;
+    }
+
     function openUrlOrPortal(url) {
-      const target = String(url || '').trim();
+      const target = resolveSafeNodeUrl(url);
       if (!target) return;
       if (target.startsWith('/')) {
-        openIntegratedOpsTool(target, false);
+        const basePath = target.split('?')[0];
+        if (Object.prototype.hasOwnProperty.call(INTEGRATED_TOOL_REGISTRY, basePath)) {
+          openIntegratedOpsTool(target, false);
+          return;
+        }
+        const resolved = resolveExternalDocsUrl(target);
+        if (resolved && typeof window !== 'undefined' && window && typeof window.open === 'function') {
+          window.open(resolved, '_blank', 'noopener,noreferrer');
+        }
         return;
       }
       if (/^https?:\/\//i.test(target)) {
-        if (typeof window.open === 'function') window.open(target, '_blank', 'noopener,noreferrer');
+        if (typeof window !== 'undefined' && window && typeof window.open === 'function') window.open(target, '_blank', 'noopener,noreferrer');
       }
     }
 
@@ -4057,6 +4394,20 @@ __WORKSPACE_LAYOUT_DIALOG__
         actions.appendChild(outBtn);
       }
       el.appendChild(actions);
+      if (list.length > 0 && typeof window !== 'undefined' && window.parent && window.parent !== window && typeof window.parent.postMessage === 'function' && typeof OpsCryerHostSnapshotBridge !== 'undefined' && typeof OpsCryerHostSnapshotBridge._collectConfiguredOrigins === 'function') {
+        const parentOrigins = OpsCryerHostSnapshotBridge._collectConfiguredOrigins(false);
+        if (parentOrigins.length > 0) {
+          const authReqPayload = {
+            type: 'opscryer:authRequired',
+            providers: list.map(s => String(s.provider || s.plugin || 'source').trim().toLowerCase()).filter(Boolean)
+          };
+          parentOrigins.forEach(targetOrigin => {
+            try {
+              window.parent.postMessage(authReqPayload, targetOrigin);
+            } catch (_e) {}
+          });
+        }
+      }
     }
 
     function openBrainAuthDialog(sourceInfo) {
@@ -4119,11 +4470,37 @@ __WORKSPACE_LAYOUT_DIALOG__
       await refreshGraphAfterAuthChange();
     }
 
+    function isTrustedDelegatedAuthOrigin(origin) {
+      if (!origin || typeof origin !== 'string') return false;
+      if (typeof window !== 'undefined' && window.location && origin === window.location.origin) return true;
+      /* Allow explicitly configured trusted Backstage/parent origins (never wildcards). */
+      if (typeof OpsCryerHostSnapshotBridge !== 'undefined' && typeof OpsCryerHostSnapshotBridge.isTrustedOrigin === 'function') {
+        return Boolean(OpsCryerHostSnapshotBridge.isTrustedOrigin(origin));
+      }
+      return false;
+    }
+
     if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
       window.addEventListener('message', ev => {
-        if (!ev || ev.origin !== window.location.origin) return;
+        if (!ev || !isTrustedDelegatedAuthOrigin(String(ev.origin || ''))) return;
+        const isSameOrigin = Boolean(window.location && ev.origin === window.location.origin);
+        /* Cross-origin delegated tokens are accepted strictly from window.parent (never sibling/popup frames). */
+        if (!isSameOrigin && window.parent && ev.source && ev.source !== window.parent) return;
         const d = ev.data;
-        if (!d || typeof d !== 'object' || d.type !== 'opscryer:setDelegatedToken') return;
+        if (!d || typeof d !== 'object') return;
+        if (d.type === 'opscryer:clearDelegatedToken') {
+          const clearProv = String(d.provider || '').trim().toLowerCase();
+          if (clearProv && /^[a-z0-9_.-]{1,64}$/.test(clearProv)) {
+            const cur = readBrainDelegatedTokens();
+            delete cur[clearProv];
+            writeBrainDelegatedTokens(cur);
+          } else {
+            writeBrainDelegatedTokens({});
+          }
+          refreshGraphAfterAuthChange();
+          return;
+        }
+        if (d.type !== 'opscryer:setDelegatedToken') return;
         const prov = String(d.provider || '').trim().toLowerCase();
         const tok = String(d.token || '').trim();
         if (!/^[a-z0-9_.-]{1,64}$/.test(prov) || !tok) return;
@@ -4140,9 +4517,9 @@ __WORKSPACE_LAYOUT_DIALOG__
         if (ecosystemPollBusy || SpatialGraphAdapter.mode !== 'REMOTE_BACKEND_API') return;
         ecosystemPollBusy = true;
         try {
-          const scopeParam = SpatialGraphAdapter.currentScope ? ('?scope=' + encodeURIComponent(SpatialGraphAdapter.currentScope)) : '';
+          const qs = SpatialGraphAdapter.buildCatalogQueryString();
           const reqHeaders = typeof buildBrainAuthHeaders === 'function' ? buildBrainAuthHeaders() : {};
-          const res = await fetch((SpatialGraphAdapter.apiBase || '') + '/api/v1/graph/catalog' + scopeParam, {cache: 'no-store', headers: reqHeaders});
+          const res = await fetch((SpatialGraphAdapter.apiBase || '') + '/api/v1/graph/catalog' + qs, {cache: 'no-store', headers: reqHeaders});
           const data = await res.json();
           if (data && typeof renderBrainAuthBanner === 'function') {
             renderBrainAuthBanner(data.auth_required_sources || [], Boolean(data.user_scoped));
@@ -4157,6 +4534,158 @@ __WORKSPACE_LAYOUT_DIALOG__
           ecosystemPollBusy = false;
         }
       }, 3000);
+    }
+
+    function renderKnowledgeSourcesPanel(sources, brainConnected) {
+      const panel = $('kg-sources-panel');
+      const listEl = $('kg-sources-list');
+      const emptyEl = $('kg-sources-empty-state');
+      const activeBadge = $('kg-sources-active-badge');
+      const refreshBtn = $('kg-sources-refresh-btn');
+      if (refreshBtn) {
+        refreshBtn.onclick = () => initKnowledgeSources(true);
+      }
+      const toggleable = Array.isArray(sources)
+        ? sources.filter(s => s && isValidSourceId(s.id) && (s.kind === 'external' || s.default_enabled === false))
+        : [];
+      SpatialGraphAdapter.availableSources = toggleable;
+      const selectedSet = new Set((SpatialGraphAdapter.selectedSources || []).filter(id => isValidSourceId(id)));
+      if (activeBadge) {
+        activeBadge.textContent = String(selectedSet.size) + ' active';
+      }
+      if (listEl) listEl.replaceChildren();
+      if (!panel) return;
+      if (panel.setAttribute) {
+        panel.setAttribute('data-brain-connected', brainConnected ? 'true' : 'false');
+        panel.setAttribute('data-source-count', String(toggleable.length));
+      }
+      if (!brainConnected || toggleable.length === 0) {
+        if (panel.style) panel.style.display = 'none';
+        if (emptyEl) {
+          emptyEl.textContent = brainConnected ? 'No external knowledge sources configured' : 'Brain disconnected';
+          if (emptyEl.style) emptyEl.style.display = 'inline';
+        }
+        return;
+      }
+      if (panel.style) panel.style.display = 'flex';
+      if (emptyEl && emptyEl.style) emptyEl.style.display = 'none';
+      toggleable.forEach(src => {
+        const sid = String(src.id);
+        const isChecked = selectedSet.has(sid);
+        const row = mk('div');
+        row.className = 'kg-source-row' + (isChecked ? ' active-source' : '');
+        row.dataset = row.dataset || {};
+        row.dataset.sourceId = sid;
+        if (row.setAttribute) row.setAttribute('data-source-id', sid);
+        const tooltipParts = [];
+        if (src.source_repo) tooltipParts.push('Repo: ' + String(src.source_repo));
+        if (src.description) tooltipParts.push(String(src.description));
+        if (src.commit_sha) tooltipParts.push('Commit: ' + String(src.commit_sha).slice(0, 12));
+        if (tooltipParts.length > 0) {
+          row.title = tooltipParts.join(' • ');
+          if (row.setAttribute) row.setAttribute('title', row.title);
+        }
+        const lbl = mk('label');
+        lbl.className = 'kg-source-label';
+        const cb = mk('input');
+        cb.type = 'checkbox';
+        cb.className = 'kg-source-checkbox';
+        cb.checked = isChecked;
+        cb.dataset = cb.dataset || {};
+        cb.dataset.sourceId = sid;
+        if (cb.setAttribute) {
+          cb.setAttribute('type', 'checkbox');
+          cb.setAttribute('data-source-id', sid);
+          cb.setAttribute('aria-label', String(src.label || sid));
+        }
+        cb.addEventListener('change', () => toggleKnowledgeSource(sid, Boolean(cb.checked)));
+        const nameSpan = mk('span');
+        nameSpan.className = 'kg-source-name';
+        nameSpan.textContent = String(src.label || sid);
+        lbl.appendChild(cb);
+        lbl.appendChild(nameSpan);
+        row.appendChild(lbl);
+        const countBadge = mk('span');
+        countBadge.className = 'kg-source-count';
+        const nCount = Number(src.node_count);
+        countBadge.textContent = String(Number.isFinite(nCount) && nCount >= 0 ? nCount : 0) + ' nodes';
+        row.appendChild(countBadge);
+        const syncStatus = String(src.sync_source || 'unavailable');
+        const safeStatusClass = syncStatus.toLowerCase().replace(/[^a-z0-9-]+/g, '-');
+        const statusPill = mk('span');
+        statusPill.className = 'kg-source-status kg-status-' + safeStatusClass;
+        statusPill.textContent = syncStatus;
+        row.appendChild(statusPill);
+        if (src.docs_url) {
+          const docsHref = resolveExternalDocsUrl(src.docs_url);
+          if (docsHref) {
+            const docsLink = mk('a');
+            docsLink.className = 'kg-source-docs-link';
+            docsLink.href = docsHref;
+            docsLink.target = '_blank';
+            docsLink.rel = 'noopener noreferrer';
+            docsLink.textContent = 'Docs ↗';
+            docsLink.title = 'Open TechDocs (' + docsHref + ')';
+            if (docsLink.setAttribute) {
+              docsLink.setAttribute('href', docsHref);
+              docsLink.setAttribute('target', '_blank');
+              docsLink.setAttribute('rel', 'noopener noreferrer');
+            }
+            row.appendChild(docsLink);
+          }
+        }
+        if (listEl) listEl.appendChild(row);
+      });
+    }
+
+    async function toggleKnowledgeSource(sourceId, enabled) {
+      const sid = String(sourceId || '');
+      if (!isValidSourceId(sid)) return;
+      const next = (SpatialGraphAdapter.selectedSources || []).filter(id => id !== sid);
+      if (enabled) next.push(sid);
+      SpatialGraphAdapter.selectedSources = next;
+      renderKnowledgeSourcesPanel(SpatialGraphAdapter.availableSources || [], true);
+      await loadUnifiedClusterAndSubsystemGraph(true);
+    }
+
+    async function initKnowledgeSources(forceRefresh) {
+      if (typeof fetch !== 'function') {
+        renderKnowledgeSourcesPanel([], false);
+        return [];
+      }
+      const refreshBtn = $('kg-sources-refresh-btn');
+      if (refreshBtn && forceRefresh) refreshBtn.textContent = '↻ Syncing...';
+      try {
+        const suffix = forceRefresh ? '?refresh=1' : '';
+        const reqHeaders = typeof buildBrainAuthHeaders === 'function' ? buildBrainAuthHeaders() : {};
+        const res = await fetch((SpatialGraphAdapter.apiBase || '') + '/api/v1/graph/sources' + suffix, {cache: 'no-store', headers: reqHeaders});
+        if (!res.ok) {
+          renderKnowledgeSourcesPanel([], false);
+          return [];
+        }
+        const data = await res.json();
+        const brainConnected = Boolean(data && data.brain_connected !== false && Array.isArray(data.sources));
+        const sources = (data && Array.isArray(data.sources)) ? data.sources : [];
+        const toggleable = sources.filter(s => s && isValidSourceId(s.id) && (s.kind === 'external' || s.default_enabled === false));
+        if (forceRefresh) {
+          const prevSet = new Set(SpatialGraphAdapter.selectedSources || []);
+          const prevKnown = new Set((SpatialGraphAdapter.availableSources || []).map(s => String(s.id)));
+          SpatialGraphAdapter.selectedSources = toggleable
+            .filter(s => prevKnown.has(String(s.id)) ? prevSet.has(String(s.id)) : Boolean(s.default_enabled))
+            .map(s => String(s.id));
+        } else {
+          SpatialGraphAdapter.selectedSources = toggleable
+            .filter(s => Boolean(s.default_enabled))
+            .map(s => String(s.id));
+        }
+        renderKnowledgeSourcesPanel(sources, brainConnected);
+        return toggleable;
+      } catch (_err) {
+        renderKnowledgeSourcesPanel([], false);
+        return [];
+      } finally {
+        if (refreshBtn) refreshBtn.textContent = '↻ Refresh';
+      }
     }
 
     async function initBrainControls() {
@@ -4269,7 +4798,7 @@ __WORKSPACE_LAYOUT_DIALOG__
         if (inEdges.has(v) && byId.has(u)) inEdges.get(v).push({source: u, relation: rel});
       });
       const resolveLivePrimaryUrl = (n, ns, rkind) => {
-        const cur = String(n.primary_url || '');
+        const cur = String(n.primary_url || n.canonical_url || '');
         if (cur && cur !== 'https://kubernetes.cluster.example.org') return cur;
         if (ns === 'gitlab') return 'https://gitlab.cluster.example.org';
         if (ns === 'argocd') return 'https://argocd.cluster.example.org';
@@ -4745,7 +5274,8 @@ __WORKSPACE_LAYOUT_DIALOG__
     }
     function openSelectedPrimaryUrl() {
       const n = SpatialGraphAdapter.getNode(SpatialGraphAdapter.selectedBoxId || SpatialGraphAdapter.currentId);
-      if (n && n.primary_url) openUrlOrPortal(String(n.primary_url));
+      const href = n && (n.canonical_url || n.primary_url);
+      if (href) openUrlOrPortal(String(href));
     }
     function travelToAncestor(idx) {
       const tid = SpatialGraphAdapter.historyStack[idx];
@@ -5978,6 +6508,8 @@ __WORKSPACE_LAYOUT_JS__
     if (typeof window !== 'undefined' && window) {
       window.OpsCryerHostSnapshotBridge = OpsCryerHostSnapshotBridge;
     }
+    SpatialGraphAdapter.refreshSources = () => initKnowledgeSources(true);
+    SpatialGraphAdapter.toggleSource = toggleKnowledgeSource;
     SpatialGraphAdapter.init();
     window.SpatialGraphAdapter = SpatialGraphAdapter;
     if (typeof window !== 'undefined' && window.OpsCryerWorkspaceLayout) {
@@ -6664,6 +7196,14 @@ def _build_frontend_handler(default_api_base: str = "",
                     self._send_bytes(200, render_adapters_html().encode("utf-8"),
                                      "text/html; charset=utf-8")
                     return
+                if url.path == "/nodes":
+                    from live_metrics_poller import render_nodes_hardware_html
+
+                    if url.query:
+                        raise ValueError("Invalid query parameters")
+                    self._send_bytes(200, render_nodes_hardware_html().encode("utf-8"),
+                                     "text/html; charset=utf-8")
+                    return
                 if url.path == "/metrics-live":
                     from live_metrics_poller import render_live_metrics_html
 
@@ -6795,6 +7335,32 @@ def _build_frontend_handler(default_api_base: str = "",
                     self._send_bytes(200, render_world_map_html(catalog=wm_catalog).encode("utf-8"),
                                      "text/html; charset=utf-8")
                     return
+                if url.path == "/map-2d":
+                    from world_map_2d_standalone import render_2d_world_map_html
+
+                    if url.query:
+                        raise ValueError("Invalid query parameters")
+                    brain_url = _get_brain_api_url()
+                    wm2d_catalog: dict[str, Any] | None = None
+                    if brain_url:
+                        st_b, brain_payload = _proxy_brain_json_request(
+                            brain_url,
+                            "/api/v1/opscryer/graph?live=0",
+                            extra_headers=_extract_brain_delegated_headers(self.headers),
+                        )
+                        if st_b == 200 and isinstance(brain_payload, dict) and isinstance(brain_payload.get("nodes"), list):
+                            wm2d_catalog = brain_payload
+                        elif _is_truth_mode_enabled():
+                            wm2d_catalog = _build_empty_truth_catalog(
+                                str((brain_payload or {}).get("error") or f"Brain API returned HTTP {st_b}")
+                            )
+                    if wm2d_catalog is None:
+                        overlay_on = os.environ.get("OPSCRYER_ECOSYSTEM_OVERLAY") == "1"
+                        wm2d_catalog = deepcopy(self._get_unified_catalog(include_ecosystem=overlay_on))
+                    wm2d_catalog = _filter_gateway_catalog_by_mls(wm2d_catalog)
+                    self._send_bytes(200, render_2d_world_map_html(catalog=wm2d_catalog).encode("utf-8"),
+                                     "text/html; charset=utf-8")
+                    return
                 if url.path in ("/chat", "/portal") and not url.query:
                     from ticket_chat_portal import render_concierge_chat_html
 
@@ -6825,10 +7391,12 @@ def _build_frontend_handler(default_api_base: str = "",
                     "/api/v1/scale-benchmark": {"nodes"},
                     "/api/v1/openapi.json": set(),
                     "/api/v1/environment-adapters": {"adapter"},
-                    "/api/v1/graph/catalog": {"live", "scope"},
+                    "/api/v1/graph/catalog": {"live", "scope", "sources"},
+                    "/api/v1/graph/sources": {"refresh"},
                     "/api/v1/brain/scopes": set(),
                     "/api/v1/brain/status": set(),
                     "/api/v1/live-metrics": {"live"},
+                    "/api/v1/nodes/hardware-metrics": {"live"},
                     "/api/v1/two-act-status": {"act"},
                     "/api/v1/dogfood-zoom": {"node_id", "zoom_level"},
                     "/api/v1/oscal-summary": set(),
@@ -6889,6 +7457,7 @@ def _build_frontend_handler(default_api_base: str = "",
                     "/api/v1/flight-recorder/replay": set(),
                     "/api/v1/world-map/layout": {"scope", "mode", "nodes"},
                     "/api/v1/world-map/unit-types": set(),
+                    "/api/v1/world-map-2d/layout": {"scope", "mode", "nodes"},
                     "/api/v1/graph/levels": {"node_ids", "scope"},
                     "/api/v1/datasets/dogfood": {"eval"},
                     "/api/v1/datasets/tree": {"include_dogfood", "scope"},
@@ -6908,13 +7477,18 @@ def _build_frontend_handler(default_api_base: str = "",
                 if (set(query) - allowed[url.path]
                         or any(len(values) != 1 for values in query.values())):
                     raise ValueError("Invalid query parameters")
-                if (url.path in {"/api/v1/graph/catalog", "/api/v1/live-metrics"}
+                if (url.path in {"/api/v1/graph/catalog", "/api/v1/live-metrics", "/api/v1/nodes/hardware-metrics"}
                         and query.get("live", ["0"])[0] not in {"0", "1"}):
                     raise ValueError("Invalid query parameters")
                 if url.path == "/api/v1/graph/catalog" and "scope" in query:
                     scope_val = query["scope"][0]
                     if not re.match(r"^[a-zA-Z0-9_.-]{1,64}$", scope_val):
                         raise ValueError("Invalid query parameters")
+                if url.path == "/api/v1/graph/catalog" and "sources" in query:
+                    _validate_graph_sources_param(query["sources"][0])
+                if (url.path == "/api/v1/graph/sources"
+                        and query.get("refresh", ["0"])[0] not in {"0", "1"}):
+                    raise ValueError("Invalid query parameters")
                 if url.path == "/api/v1/scale-benchmark":
                     from scale_benchmark import _parse_scale_nodes, run_scalability_benchmark_suite
 
@@ -7104,6 +7678,41 @@ def _build_frontend_handler(default_api_base: str = "",
                             overlay_on = os.environ.get("OPSCRYER_ECOSYSTEM_OVERLAY") == "1"
                             wm_catalog = deepcopy(self._get_unified_catalog(include_ecosystem=overlay_on))
                     payload = build_world_map_layout(wm_catalog, mode=mode_val, scope=scope_val)
+                elif url.path == "/api/v1/world-map-2d/layout":
+                    from world_map_2d_standalone import WORLD_MAP_2D_MODES, build_2d_world_map_layout
+
+                    mode_val = query.get("mode", ["domain_grid"])[0]
+                    if mode_val not in WORLD_MAP_2D_MODES:
+                        raise ValueError("Invalid query parameters")
+                    scope_val = query.get("scope", [""])[0]
+                    if "scope" in query and not re.match(r"^[a-zA-Z0-9_.-]{1,64}$", scope_val):
+                        raise ValueError("Invalid query parameters")
+                    if "nodes" in query:
+                        from scale_benchmark import _parse_scale_nodes, generate_synthetic_enterprise_graph
+
+                        wm2d_catalog = generate_synthetic_enterprise_graph(_parse_scale_nodes(query["nodes"][0]))
+                    else:
+                        brain_url = _get_brain_api_url()
+                        if brain_url:
+                            qs_parts = ["live=0"]
+                            if scope_val:
+                                qs_parts.insert(0, f"scope={urllib.parse.quote(scope_val)}")
+                            status_code, brain_payload = _proxy_brain_json_request(
+                                brain_url,
+                                f"/api/v1/opscryer/graph?{'&'.join(qs_parts)}",
+                                extra_headers=_extract_brain_delegated_headers(self.headers),
+                            )
+                            # Reject non-2xx Brain responses or malformed graph catalogs before building 2D layout.
+                            if status_code >= 400 or not isinstance(brain_payload, dict) or not isinstance(brain_payload.get("nodes"), list):
+                                err_body = brain_payload if isinstance(brain_payload, dict) else {"error": "Brain API unavailable"}
+                                self._send_json(status_code if status_code >= 400 else 503, err_body)
+                                return
+                            wm2d_catalog = brain_payload
+                        else:
+                            overlay_on = os.environ.get("OPSCRYER_ECOSYSTEM_OVERLAY") == "1"
+                            wm2d_catalog = deepcopy(self._get_unified_catalog(include_ecosystem=overlay_on))
+                    wm2d_catalog = _filter_gateway_catalog_by_mls(wm2d_catalog)
+                    payload = build_2d_world_map_layout(wm2d_catalog, mode=mode_val, scope=scope_val)
                 elif url.path == "/api/v1/brain/scopes":
                     brain_url = _get_brain_api_url()
                     if not brain_url:
@@ -7141,19 +7750,67 @@ def _build_frontend_handler(default_api_base: str = "",
                             {"enabled": True, "brain_api_url": brain_url, **payload_out},
                         )
                     return
+                elif url.path == "/api/v1/graph/sources":
+                    brain_url = _get_brain_api_url()
+                    if not brain_url:
+                        self._send_json(200, {
+                            "sources": [],
+                            "brain_connected": False,
+                            "error": "OPSCRYER_BRAIN_API_URL not configured",
+                        })
+                        return
+                    refresh = query.get("refresh", ["0"])[0]
+                    path_and_query = (
+                        "/api/v1/graph/sources?refresh=1"
+                        if refresh == "1"
+                        else "/api/v1/graph/sources"
+                    )
+                    status_code, payload_out = _proxy_brain_json_request(
+                        brain_url,
+                        path_and_query,
+                        extra_headers=_extract_brain_delegated_headers(self.headers),
+                    )
+                    if status_code == 200 and isinstance(payload_out, dict):
+                        sources_list = payload_out.get("sources")
+                        self._send_json(200, {
+                            **payload_out,
+                            "sources": sources_list if isinstance(sources_list, list) else [],
+                            "brain_connected": True,
+                        })
+                    else:
+                        raw_err = payload_out.get("error") if isinstance(payload_out, dict) else None
+                        err_msg = str(raw_err or f"HTTP {status_code}")
+                        self._send_json(200, {
+                            "sources": [],
+                            "brain_connected": False,
+                            "error": err_msg if err_msg.startswith("Brain API") else f"Brain API error: {err_msg}",
+                        })
+                    return
                 elif url.path == "/api/v1/graph/catalog":
                     brain_url = _get_brain_api_url()
                     if brain_url:
                         scope = query.get("scope", [""])[0]
                         live = query.get("live", ["0"])[0]
-                        qs_parts = [f"live={urllib.parse.quote(live)}"]
+                        validated_sources = (
+                            _validate_graph_sources_param(query["sources"][0])
+                            if "sources" in query
+                            else []
+                        )
+                        qs_parts: list[str] = []
                         if scope:
-                            qs_parts.insert(0, f"scope={urllib.parse.quote(scope)}")
+                            qs_parts.append(f"scope={urllib.parse.quote(scope, safe='')}")
+                        if validated_sources:
+                            qs_parts.append(
+                                f"sources={urllib.parse.quote(','.join(validated_sources), safe=',')}"
+                            )
+                        qs_parts.append(f"live={urllib.parse.quote(live, safe='')}")
                         status_code, payload_out = _proxy_brain_json_request(
                             brain_url,
                             f"/api/v1/opscryer/graph?{'&'.join(qs_parts)}",
                             extra_headers=_extract_brain_delegated_headers(self.headers),
                         )
+                        if status_code == 200:
+                            payload_out = _filter_gateway_catalog_by_mls(payload_out)
                         self._send_json(status_code, payload_out)
                         return
                     from cluster_diff_engine import DEFAULT_CATALOG_PATH
@@ -7189,11 +7846,30 @@ def _build_frontend_handler(default_api_base: str = "",
                             payload["rts_currencies"] = build_enriched_live_currencies()
                     if overlay_on and query.get("live", ["0"])[0] == "1":
                         payload = _apply_optional_ecosystem_overlay(payload)
+                    payload = _filter_gateway_catalog_by_mls(payload)
                 elif url.path == "/api/v1/live-metrics":
                     from live_metrics_poller import poll_live_cluster_metrics
 
                     payload = poll_live_cluster_metrics(
                         allow_kubectl=query.get("live", ["0"])[0] == "1")
+                elif url.path == "/api/v1/nodes/hardware-metrics":
+                    from live_metrics_poller import poll_live_nodes_hardware_metrics
+
+                    live_flag = query.get("live", ["0"])[0] == "1"
+                    brain_cat = None
+                    brain_url = _get_brain_api_url()
+                    if brain_url:
+                        b_code, b_payload = _proxy_brain_json_request(
+                            brain_url,
+                            f"/api/v1/opscryer/graph?live={'1' if live_flag else '0'}",
+                            extra_headers=_extract_brain_delegated_headers(self.headers),
+                        )
+                        if b_code == 200 and isinstance(b_payload, dict):
+                            brain_cat = _filter_gateway_catalog_by_mls(b_payload)
+                    payload = poll_live_nodes_hardware_metrics(
+                        allow_kubectl=live_flag,
+                        brain_catalog=brain_cat,
+                    )
                 elif url.path == "/api/v1/two-act-status":
                     payload = build_two_act_browser_status(int(query.get("act", ["1"])[0]))
                 elif url.path == "/api/v1/dogfood-zoom":
@@ -7544,11 +8220,14 @@ def _build_frontend_handler(default_api_base: str = "",
                         self.end_headers()
 
                         try:
+                            sse_rank, sse_comps = _resolve_gateway_mls_clearance()
                             for chunk in stream_events_generator(
                                 since_seq=since_seq,
                                 topics=parsed_topics,
                                 max_events=parsed_max_events,
                             ):
+                                if not _is_sse_chunk_permitted_by_mls(chunk, sse_rank, sse_comps):
+                                    continue
                                 self.wfile.write(chunk.encode("utf-8"))
                                 self.wfile.flush()
                         except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError, OSError):

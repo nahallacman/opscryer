@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "opscryer"
-version = "1.3.0"
+version = "1.4.0"
 description = "OpsCryer spatial graph operations suite"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -96,6 +96,7 @@ py-modules = [
     "ui_theme",
     "unit_archetypes",
     "webhook_notifier",
+    "world_map_2d_standalone",
     "world_map_engine",
     "workspace_layout",
     "yaml_shim",

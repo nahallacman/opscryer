@@ -3,6 +3,18 @@
 
 All notable changes to OpsCryer are documented in this file.
 
+## [1.4.0] - 2026-11-27
+
+### Added
+- Opt-in Knowledge Graph Sources HUD panel and fail-closed `/api/v1/graph/sources` + `sources=` query proxy (`opscryer_browser.py`, `route_registry.py`, `tests/test_graph_sources_panel.py`).
+- Standalone 2D orthographic world map portal (`/map-2d` and `/api/v1/world-map-2d/layout`) separated from the 2.5D/3D spatial engine (`world_map_2d_standalone.py`, `tests/test_standalone_2d_world_map_split.py`).
+- Live `/nodes` hardware metrics parity portal and `/api/v1/nodes/hardware-metrics` endpoint surfacing honest `UNAVAILABLE_NO_EXPORTER` states (`live_metrics_poller.py`, `tests/test_live_nodes_hardware_metrics.py`).
+- Backstage OAuth2 PKCE delegated token bridge (`delegatedAuthBridge.ts`, `OpsCryerBrowserComponent.tsx`, `tests/test_backstage_oauth_pkce_bridge.py`).
+- Added repository PR governance templates and automation (`.github/CODEOWNERS`, `.github/pull_request_template.md`, `.github/workflows/pr-governance.yml`).
+
+### Security
+- Enforced fail-closed MLS gateway and SSE confinement across `opscryer.bridge` and `opscryer_browser.py` with end-to-end leak verification (`tests/test_mls_high_security_e2e.py`).
+
 ## [1.3.0] - 2026-11-25
 
 ### Added

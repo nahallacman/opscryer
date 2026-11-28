@@ -1,7 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 import {
+  buildClearDelegatedTokenMessage,
+  buildDelegatedTokenMessage,
   buildEmbeddedOpscryerUrl,
+  parseOpscryerIframeEvent,
+  postClearDelegatedTokenToIframe,
+  postDelegatedTokenToIframe,
+  requestScopedOAuthToken,
+  resolveOpscryerTargetOrigin,
   resolveSafeOpscryerUrl,
+  sanitizeProviderSlug,
 } from './OpsCryerBrowserComponent';
 
 describe('resolveSafeOpscryerUrl', () => {
@@ -50,5 +58,94 @@ describe('buildEmbeddedOpscryerUrl', () => {
     expect(
       buildEmbeddedOpscryerUrl('https://opscryer.example.com/?embed=1'),
     ).toBe('https://opscryer.example.com/?embed=1');
+  });
+});
+
+describe('Backstage OAuth2 PKCE delegated token bridge', () => {
+  it('extracts strict http(s) targetOrigin and sanitizes provider slugs', () => {
+    expect(
+      resolveOpscryerTargetOrigin('https://opscryer.example.com:8443/hub?x=1'),
+    ).toBe('https://opscryer.example.com:8443');
+    expect(resolveOpscryerTargetOrigin('javascript:alert(1)')).toBe(
+      'http://localhost:8088',
+    );
+    expect(sanitizeProviderSlug('  GitLab_Direct  ')).toBe('gitlab_direct');
+    expect(sanitizeProviderSlug('bad/provider!')).toBe('gitlab');
+  });
+
+  it('refuses wildcard targetOrigin and posts strictly pinned delegated tokens', () => {
+    const postMessage = jest.fn();
+    expect(
+      postDelegatedTokenToIframe(
+        { postMessage },
+        '*',
+        'gitlab',
+        'short-lived-pkce-token',
+      ),
+    ).toBe(false);
+    expect(postMessage).not.toHaveBeenCalled();
+
+    expect(
+      postDelegatedTokenToIframe(
+        { postMessage },
+        'https://opscryer.example.com/hub',
+        'gitlab',
+        'short-lived-pkce-token',
+      ),
+    ).toBe(true);
+    expect(postMessage).toHaveBeenCalledWith(
+      buildDelegatedTokenMessage('gitlab', 'short-lived-pkce-token'),
+      'https://opscryer.example.com',
+    );
+
+    expect(
+      postClearDelegatedTokenToIframe(
+        { postMessage },
+        'https://opscryer.example.com',
+        'gitlab',
+      ),
+    ).toBe(true);
+    expect(postMessage).toHaveBeenLastCalledWith(
+      buildClearDelegatedTokenMessage('gitlab'),
+      'https://opscryer.example.com',
+    );
+  });
+
+  it('accepts ready/authRequired only from exact expectedOrigin', () => {
+    expect(
+      parseOpscryerIframeEvent(
+        { origin: 'https://evil.example.net', data: { type: 'opscryer:ready' } },
+        'https://opscryer.example.com',
+      ),
+    ).toBeNull();
+    expect(
+      parseOpscryerIframeEvent(
+        {
+          origin: 'https://opscryer.example.com',
+          data: { type: 'opscryer:authRequired', providers: ['gitlab', 'bad/x'] },
+        },
+        'https://opscryer.example.com',
+      ),
+    ).toEqual({ kind: 'authRequired', providers: ['gitlab'] });
+  });
+
+  it('requests scoped tokens cleanly for silent and interactive PKCE modes', async () => {
+    const getAccessToken = jest.fn().mockResolvedValue('pkce-token-123');
+    const tok = await requestScopedOAuthToken(
+      { getAccessToken },
+      ['read_api'],
+      { optional: true },
+    );
+    expect(tok).toBe('pkce-token-123');
+    expect(getAccessToken).toHaveBeenCalledWith(['read_api'], {
+      optional: true,
+    });
+
+    const failingApi = {
+      getAccessToken: jest.fn().mockRejectedValue(new Error('cancelled')),
+    };
+    await expect(
+      requestScopedOAuthToken(failingApi, ['read_api'], { optional: false }),
+    ).resolves.toBeNull();
   });
 });

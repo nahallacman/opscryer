@@ -52,31 +52,97 @@ def _safe_id(prefix: str, raw: str) -> str:
     return f"{prefix}-{cleaned or 'item'}"
 
 
+_UNREACHABLE_MLS_META: Dict[str, Any] = {
+    "classification_rank": 10**9,
+    "compartments": ["__malformed_classification__"],
+    "visibility": "OPAQUE",
+}
+
+
+def _parse_strict_mls_rank(raw: Any) -> Optional[int]:
+    if isinstance(raw, bool):
+        return None
+    try:
+        val = int(raw)
+    except (TypeError, ValueError):
+        return None
+    return val if val >= 0 else None
+
+
+def _parse_strict_mls_comps(raw: Any) -> Optional[List[str]]:
+    if raw is None:
+        return []
+    if isinstance(raw, (str, bytes)) or not isinstance(raw, (list, tuple, set, frozenset)):
+        return None
+    return sorted({str(c).strip() for c in raw if str(c).strip()})
+
+
 def _extract_node_mls(source: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    """Extract normalized MLS metadata from an entry or return None if unclassified."""
+    """Extract normalized MLS metadata across mls/mls_label/classification/top-level carriers; fail closed if malformed."""
     if not isinstance(source, dict):
         return None
-    raw_mls = source.get("mls") if isinstance(source.get("mls"), dict) else None
+    carrier_keys = ("mls", "mls_label", "classification")
+    has_container = any(k in source and source.get(k) is not None for k in carrier_keys)
     has_top_level = any(
-        k in source for k in ("classification_rank", "compartments", "visibility", "scope")
+        k in source and source.get(k) is not None
+        for k in ("classification_rank", "compartments", "visibility", "scope")
     )
-    if raw_mls is None and not has_top_level:
+    if not has_container and not has_top_level:
         return None
-    holder = raw_mls if raw_mls is not None else source
-    rank = int(holder.get("classification_rank", source.get("classification_rank", 0)) or 0)
-    raw_comps = holder.get("compartments", source.get("compartments")) or []
-    comps = sorted({str(c).strip() for c in raw_comps if str(c).strip()})
-    scope = str(holder.get("scope", source.get("scope", "")) or "").strip().lower()
-    raw_vis = str(holder.get("visibility", source.get("visibility", "")) or "").strip().upper()
+
+    max_rank = 0
+    comps_set: set[str] = set()
+    scope = ""
+    raw_vis = ""
+
+    # Inspect all container carriers and monotonically join rank/compartments so no duplicate downgrades classification.
+    for key in carrier_keys:
+        if key not in source or source.get(key) is None:
+            continue
+        carrier = source.get(key)
+        if not isinstance(carrier, dict):
+            return dict(_UNREACHABLE_MLS_META)
+        raw_rank = carrier.get("classification_rank")
+        if raw_rank is None:
+            raw_rank = carrier.get("rank")
+        if raw_rank is not None:
+            parsed_rank = _parse_strict_mls_rank(raw_rank)
+            if parsed_rank is None:
+                return dict(_UNREACHABLE_MLS_META)
+            max_rank = max(max_rank, parsed_rank)
+        parsed_comps = _parse_strict_mls_comps(carrier.get("compartments"))
+        if parsed_comps is None:
+            return dict(_UNREACHABLE_MLS_META)
+        comps_set.update(parsed_comps)
+        if not scope and carrier.get("scope"):
+            scope = str(carrier.get("scope") or "").strip().lower()
+        if not raw_vis and carrier.get("visibility"):
+            raw_vis = str(carrier.get("visibility") or "").strip().upper()
+
+    if "classification_rank" in source and source.get("classification_rank") is not None:
+        top_rank = _parse_strict_mls_rank(source.get("classification_rank"))
+        if top_rank is None:
+            return dict(_UNREACHABLE_MLS_META)
+        max_rank = max(max_rank, top_rank)
+    if "compartments" in source and source.get("compartments") is not None:
+        top_comps = _parse_strict_mls_comps(source.get("compartments"))
+        if top_comps is None:
+            return dict(_UNREACHABLE_MLS_META)
+        comps_set.update(top_comps)
+    if not scope and source.get("scope"):
+        scope = str(source.get("scope") or "").strip().lower()
+    if not raw_vis and source.get("visibility"):
+        raw_vis = str(source.get("visibility") or "").strip().upper()
+
     if raw_vis in ("OPAQUE", "STUB", "FULL"):
         vis = raw_vis
-    elif scope == "project" and rank > 0:
+    elif (scope == "project" and max_rank > 0) or max_rank >= 30:
         vis = "OPAQUE"
     else:
         vis = "STUB"
     result: Dict[str, Any] = {
-        "classification_rank": rank,
-        "compartments": comps,
+        "classification_rank": max_rank,
+        "compartments": sorted(comps_set),
         "visibility": vis,
     }
     if scope:
@@ -136,12 +202,16 @@ def filter_spatial_catalog_by_clearance(
         nid = str(node["id"])
         is_root = nid in ("root-company", "cluster-home") or int(node.get("level_index", 1) or 0) == 0
         mls = _extract_node_mls(node)
-        if is_root or mls is None:
+        if mls is None:
             kept_nodes.append(deepcopy(node))
             continue
 
         node_rank = int(mls.get("classification_rank", 0))
         node_comps = frozenset(str(c).strip() for c in (mls.get("compartments") or []) if str(c).strip())
+        # Root nodes bypass MLS only when unclassified (rank 0 and zero compartments); explicit high-rank roots never bypass.
+        if is_root and node_rank == 0 and not node_comps:
+            kept_nodes.append(deepcopy(node))
+            continue
         dominated = v_rank >= node_rank and node_comps.issubset(comp_set)
         if dominated:
             kept_nodes.append(deepcopy(node))
