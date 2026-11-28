@@ -13,7 +13,8 @@ import json
 # Query names mirror the public browser handler; all operations are GET.
 _ROUTES = {
     "scale-benchmark": ("Synthetic graph scalability benchmark", ("nodes",)),
-    "graph/catalog": ("Spatial graph catalog", ("live", "scope")),
+    "graph/catalog": ("Spatial graph catalog", ("live", "scope", "sources")),
+    "graph/sources": ("Available Central Brain Knowledge Graph sources", ("refresh",)),
     "brain/scopes": ("Available Central Brain Knowledge Graph scopes", ()),
     "brain/status": ("Upstream Central Brain API connection status", ()),
     "two-act-status": ("Two-act browser status", ("act",)),
@@ -93,6 +94,10 @@ _PARAMETERS = {
               "Use 1 to poll live cluster metrics via kubectl; 0 uses offline data."),
     "scope": ({"type": "string", "pattern": "^[a-zA-Z0-9_.-]{1,64}$"},
                "Optional Central Brain Knowledge Graph scope identifier when OPSCRYER_BRAIN_API_URL is configured."),
+    "sources": ({"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,63}(,[a-z0-9][a-z0-9_-]{0,63})*$"},
+                 "Optional comma-separated opt-in external knowledge graph source IDs to overlay."),
+    "refresh": ({"type": "string", "enum": ["0", "1"], "default": "0"},
+                 "Use 1 to force a live refresh of knowledge graph sources from Central Brain."),
     "act": ({"type": "integer", "enum": [1, 2], "default": 1}, "Browser act."),
     "node_id": ({"type": "string", "default": "root-company"}, "Dogfood graph node ID."),
     "zoom_level": ({"type": "integer", "minimum": 0, "maximum": 4, "default": 0},

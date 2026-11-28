@@ -83,8 +83,11 @@ API_V1_ROUTES = {
         "allowed_params": {"adapter"}, "module": "environment_adapters", "subsystem": "portals",
         "description": "Environment adapter compatibility catalog."},
     "/api/v1/graph/catalog": {
-        "allowed_params": {"live", "scope"}, "module": "cluster_diff_engine", "subsystem": "live",
-        "description": "Snapshot or live-proxied Central Brain spatial graph catalog with optional scope and live metrics."},
+        "allowed_params": {"live", "scope", "sources"}, "module": "cluster_diff_engine", "subsystem": "live",
+        "description": "Snapshot or live-proxied Central Brain spatial graph catalog with optional scope, opt-in sources, and live metrics."},
+    "/api/v1/graph/sources": {
+        "allowed_params": {"refresh"}, "module": "opscryer_browser", "subsystem": "portals",
+        "description": "Available Central Brain Knowledge Graph primary and opt-in external sources with sync status."},
     "/api/v1/brain/scopes": {
         "allowed_params": set(), "module": "opscryer_browser", "subsystem": "portals",
         "description": "Available Central Brain Knowledge Graph scopes when OPSCRYER_BRAIN_API_URL is configured."},

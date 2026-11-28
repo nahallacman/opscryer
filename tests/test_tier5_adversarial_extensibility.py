@@ -983,9 +983,9 @@ class TestTier5RouteRegistryAdversarial(unittest.TestCase):
     """Adversarial white-box tests for route_registry.py."""
 
     def test_route_registry_counts_and_subsystem_partitioning(self) -> None:
-        """Route registry matches exact counts (22 HTML, 72 API) and strictly partitioned subsystems."""
+        """Route registry matches exact counts (22 HTML, 73 API) and strictly partitioned subsystems."""
         self.assertEqual(len(HTML_PORTAL_ROUTES), 22)
-        self.assertEqual(len(API_V1_ROUTES), 72)
+        self.assertEqual(len(API_V1_ROUTES), 73)
 
         valid_subsystems = {"core", "live", "security", "portals"}
         for r in HTML_PORTAL_ROUTES:
@@ -1000,7 +1000,7 @@ class TestTier5RouteRegistryAdversarial(unittest.TestCase):
     def test_get_allowed_api_params_immutability(self) -> None:
         """get_allowed_api_params returns independent sets; mutating them does not alter API_V1_ROUTES."""
         params_map = get_allowed_api_params()
-        self.assertEqual(len(params_map), 72)
+        self.assertEqual(len(params_map), 73)
 
         # Mutate returned set
         params_map["/api/v1/scale-benchmark"].add("tampered_param")
@@ -1010,11 +1010,11 @@ class TestTier5RouteRegistryAdversarial(unittest.TestCase):
         """build_route_registry_summary returns correct counts and is completely decoupled."""
         summary1 = build_route_registry_summary()
         self.assertEqual(summary1["total_html_routes"], 22)
-        self.assertEqual(summary1["total_api_routes"], 72)
+        self.assertEqual(summary1["total_api_routes"], 73)
         self.assertEqual(summary1["by_subsystem"]["core"]["api_routes"], 12)
         self.assertEqual(summary1["by_subsystem"]["live"]["api_routes"], 9)
         self.assertEqual(summary1["by_subsystem"]["security"]["api_routes"], 21)
-        self.assertEqual(summary1["by_subsystem"]["portals"]["api_routes"], 30)
+        self.assertEqual(summary1["by_subsystem"]["portals"]["api_routes"], 31)
 
         # Tamper with summary1
         summary1["by_subsystem"]["core"]["api_routes"] = 999
