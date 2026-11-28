@@ -7,7 +7,7 @@ Inspecting package metadata does not import the application subsystems.
 
 from copy import deepcopy
 
-__version__ = '1.3.0'
+__version__ = '1.4.0'
 
 PACKAGE_SUBSYSTEMS = {
     'core': {
@@ -46,7 +46,7 @@ PACKAGE_SUBSYSTEMS = {
             'secops_vulnerability_cockpit', 'live_metrics_poller',
             'environment_adapters', 'openapi_spec', 'scale_benchmark',
             'chat_walkthrough', 'jev_calibration_eval', 'tactical_security_deck',
-            'unit_archetypes', 'world_map_engine', 'workspace_layout', 'graph_layers',
+            'unit_archetypes', 'world_map_2d_standalone', 'world_map_engine', 'workspace_layout', 'graph_layers',
             'dataset_tree_store',
         ],
         'responsibility': 'Suite HTML portals and their supporting application catalogs.',

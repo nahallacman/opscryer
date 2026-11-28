@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Box,
   Button,
@@ -9,9 +11,35 @@ import {
 } from '@material-ui/core';
 import OpenInNewIcon from '@material-ui/icons/OpenInNew';
 import { ContentHeader, InfoCard } from '@backstage/core-components';
-import { useApi, configApiRef } from '@backstage/core-plugin-api';
+import {
+  useApi,
+  useApiHolder,
+  configApiRef,
+  gitlabAuthApiRef,
+} from '@backstage/core-plugin-api';
+import {
+  DEFAULT_OAUTH_PROVIDER,
+  DEFAULT_OAUTH_SCOPES,
+  DEFAULT_OPSCRYER_URL,
+  OAuthTokenApiLike,
+  parseOpscryerIframeEvent,
+  postClearDelegatedTokenToIframe,
+  postDelegatedTokenToIframe,
+  requestScopedOAuthToken,
+  resolveOpscryerTargetOrigin,
+  sanitizeProviderSlug,
+} from './delegatedAuthBridge';
 
-const DEFAULT_OPSCRYER_URL = 'http://localhost:8088';
+export {
+  buildClearDelegatedTokenMessage,
+  buildDelegatedTokenMessage,
+  parseOpscryerIframeEvent,
+  postClearDelegatedTokenToIframe,
+  postDelegatedTokenToIframe,
+  requestScopedOAuthToken,
+  resolveOpscryerTargetOrigin,
+  sanitizeProviderSlug,
+} from './delegatedAuthBridge';
 
 export function resolveSafeOpscryerUrl(rawUrl: string | undefined): string {
   const candidate = (rawUrl ?? '').trim();
@@ -47,12 +75,102 @@ export function buildEmbeddedOpscryerUrl(
 
 export const OpsCryerBrowserComponent = () => {
   const configApi = useApi(configApiRef);
+  const apiHolder = useApiHolder();
+  const iframeRef = useRef<HTMLIFrameElement | null>(null);
+
   const opscryerConfigs =
     configApi.getOptionalConfigArray('integrations.opscryer') ?? [];
+  const primaryCfg = opscryerConfigs[0];
   const opscryerUrl = resolveSafeOpscryerUrl(
-    opscryerConfigs[0]?.getOptionalString('baseUrl'),
+    primaryCfg?.getOptionalString('baseUrl'),
   );
+  const targetOrigin = useMemo(
+    () => resolveOpscryerTargetOrigin(opscryerUrl),
+    [opscryerUrl],
+  );
+  const oauthProvider = sanitizeProviderSlug(
+    primaryCfg?.getOptionalString('oauthProvider') ?? DEFAULT_OAUTH_PROVIDER,
+  );
+  const oauthScopes = useMemo(() => {
+    const configured = primaryCfg?.getOptionalStringArray('oauthScopes');
+    return configured && configured.length > 0
+      ? configured
+      : [...DEFAULT_OAUTH_SCOPES];
+  }, [primaryCfg]);
+  const oauthApi = apiHolder.get(gitlabAuthApiRef) as
+    | OAuthTokenApiLike
+    | undefined;
+
   const embedUrl = buildEmbeddedOpscryerUrl(opscryerUrl, 'iframe');
+  const [authStatus, setAuthStatus] = useState<
+    'idle' | 'connected' | 'auth_required' | 'unavailable'
+  >(oauthApi ? 'idle' : 'unavailable');
+  const [requiredProviders, setRequiredProviders] = useState<string[]>([]);
+
+  const syncDelegatedToken = useCallback(
+    async (interactive: boolean) => {
+      if (!oauthApi) {
+        setAuthStatus('unavailable');
+        return false;
+      }
+      const token = await requestScopedOAuthToken(oauthApi, oauthScopes, {
+        optional: !interactive,
+      });
+      if (!token) {
+        if (interactive) {
+          setAuthStatus('auth_required');
+        }
+        return false;
+      }
+      const posted = postDelegatedTokenToIframe(
+        iframeRef.current?.contentWindow,
+        targetOrigin,
+        oauthProvider,
+        token,
+      );
+      if (posted) {
+        setAuthStatus('connected');
+        setRequiredProviders([]);
+      }
+      return posted;
+    },
+    [oauthApi, oauthProvider, oauthScopes, targetOrigin],
+  );
+
+  const handleDisconnectOAuth = useCallback(() => {
+    postClearDelegatedTokenToIframe(
+      iframeRef.current?.contentWindow,
+      targetOrigin,
+      oauthProvider,
+    );
+    setAuthStatus(oauthApi ? 'idle' : 'unavailable');
+  }, [oauthApi, oauthProvider, targetOrigin]);
+
+  useEffect(() => {
+    const onMessage = (event: MessageEvent) => {
+      const parsed = parseOpscryerIframeEvent(event, targetOrigin);
+      if (!parsed) {
+        return;
+      }
+      if (parsed.kind === 'ready') {
+        void syncDelegatedToken(false);
+      } else if (parsed.kind === 'authRequired') {
+        setRequiredProviders(parsed.providers);
+        setAuthStatus('auth_required');
+      }
+    };
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
+  }, [syncDelegatedToken, targetOrigin]);
+
+  const statusChipLabel =
+    authStatus === 'connected'
+      ? `OAuth2 PKCE delegated (${oauthProvider})`
+      : authStatus === 'auth_required'
+      ? `Sign-in required (${requiredProviders.join(', ') || oauthProvider})`
+      : authStatus === 'unavailable'
+      ? 'Read-only (OAuthApi not registered)'
+      : 'Read-only integration';
 
   return (
     <Box flexGrow={1} p={3} width="100%">
@@ -74,22 +192,46 @@ export const OpsCryerBrowserComponent = () => {
             title="Spatial Browser"
             subheader={`Loading from ${opscryerUrl}`}
             action={
-              <Button
-                size="small"
-                color="primary"
-                startIcon={<OpenInNewIcon />}
-                href={opscryerUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                Launch in new tab
-              </Button>
+              <Box display="flex" alignItems="center" style={{ gap: 8 }}>
+                {oauthApi && authStatus !== 'connected' && (
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    color="primary"
+                    onClick={() => void syncDelegatedToken(true)}
+                  >
+                    Connect OAuth (PKCE)
+                  </Button>
+                )}
+                {oauthApi && authStatus === 'connected' && (
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    color="default"
+                    onClick={handleDisconnectOAuth}
+                  >
+                    Disconnect OAuth
+                  </Button>
+                )}
+                <Button
+                  size="small"
+                  color="primary"
+                  startIcon={<OpenInNewIcon />}
+                  href={opscryerUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Launch in new tab
+                </Button>
+              </Box>
             }
           />
           <CardContent>
             <iframe
+              ref={iframeRef}
               src={embedUrl}
               title="OpsCryer Spatial Browser"
+              onLoad={() => void syncDelegatedToken(false)}
               style={{
                 width: '100%',
                 height: '80vh',
@@ -102,12 +244,18 @@ export const OpsCryerBrowserComponent = () => {
         </Card>
       </Box>
       <Box mt={2}>
-        <Chip label="Read-only integration" color="default" size="small" variant="outlined" />
+        <Chip
+          label={statusChipLabel}
+          color={authStatus === 'connected' ? 'primary' : 'default'}
+          size="small"
+          variant="outlined"
+        />
       </Box>
       <Box mt={2}>
         <Typography variant="caption" color="textSecondary">
-          OpsCryer is an independent service. This Backstage plugin renders it
-          in an iframe with a launch button for full-screen access.
+          OpsCryer is an independent service. When Backstage OAuthApi is
+          configured, short-lived PKCE access tokens are bridged strictly to{' '}
+          {targetOrigin} via postMessage without storing secrets on the server.
         </Typography>
       </Box>
     </Box>

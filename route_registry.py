@@ -64,11 +64,13 @@ HTML_PORTAL_ROUTES = (
     {"path": "/storage", "title": "Storage Cockpit", "subsystem": "portals", "module": "storage_zfs_cockpit"},
     {"path": "/secops", "title": "SecOps Cockpit", "subsystem": "portals", "module": "secops_vulnerability_cockpit"},
     {"path": "/metrics-live", "title": "Live Metrics", "subsystem": "live", "module": "live_metrics_poller"},
+    {"path": "/nodes", "title": "Live Nodes Hardware Metrics", "subsystem": "live", "module": "live_metrics_poller"},
     {"path": "/adapters", "title": "Environment Adapters", "subsystem": "portals", "module": "environment_adapters"},
     {"path": "/jev-eval", "title": "Jev Calibration Benchmark", "subsystem": "portals", "module": "jev_calibration_eval"},
     {"path": "/docs", "title": "API Documentation", "subsystem": "portals", "module": "openapi_spec"},
     {"path": "/tactical-deck", "title": "Tactical Security & Federation Deck", "subsystem": "portals", "module": "tactical_security_deck"},
     {"path": "/world-map", "title": "2.5D RTS Knowledge Graph World Map", "subsystem": "portals", "module": "world_map_engine"},
+    {"path": "/map-2d", "title": "Standalone 2D Orthographic World Map", "subsystem": "portals", "module": "world_map_2d_standalone"},
 )
 
 
@@ -83,8 +85,11 @@ API_V1_ROUTES = {
         "allowed_params": {"adapter"}, "module": "environment_adapters", "subsystem": "portals",
         "description": "Environment adapter compatibility catalog."},
     "/api/v1/graph/catalog": {
-        "allowed_params": {"live", "scope"}, "module": "cluster_diff_engine", "subsystem": "live",
-        "description": "Snapshot or live-proxied Central Brain spatial graph catalog with optional scope and live metrics."},
+        "allowed_params": {"live", "scope", "sources"}, "module": "cluster_diff_engine", "subsystem": "live",
+        "description": "Snapshot or live-proxied Central Brain spatial graph catalog with optional scope, opt-in sources, and live metrics."},
+    "/api/v1/graph/sources": {
+        "allowed_params": {"refresh"}, "module": "opscryer_browser", "subsystem": "portals",
+        "description": "Available Central Brain Knowledge Graph primary and opt-in external sources with sync status."},
     "/api/v1/brain/scopes": {
         "allowed_params": set(), "module": "opscryer_browser", "subsystem": "portals",
         "description": "Available Central Brain Knowledge Graph scopes when OPSCRYER_BRAIN_API_URL is configured."},
@@ -94,6 +99,9 @@ API_V1_ROUTES = {
     "/api/v1/live-metrics": {
         "allowed_params": {"live"}, "module": "live_metrics_poller", "subsystem": "live",
         "description": "Offline metrics or explicitly requested live collection."},
+    "/api/v1/nodes/hardware-metrics": {
+        "allowed_params": {"live"}, "module": "live_metrics_poller", "subsystem": "live",
+        "description": "Live or snapshot cluster node hardware metrics (CPU, RAM, GPU, disk, network, temperatures) with honest unavailable states."},
     "/api/v1/two-act-status": {
         "allowed_params": {"act"}, "module": "opscryer_browser", "subsystem": "portals",
         "description": "Two-act demonstration status."},
@@ -274,6 +282,9 @@ API_V1_ROUTES = {
     "/api/v1/world-map/unit-types": {
         "allowed_params": set(), "module": "unit_archetypes", "subsystem": "portals",
         "description": "List built-in and custom World Map unit archetypes or register a custom unit type via POST."},
+    "/api/v1/world-map-2d/layout": {
+        "allowed_params": {"scope", "mode", "nodes"}, "module": "world_map_2d_standalone", "subsystem": "portals",
+        "description": "Standalone orthographic 2D World Map layout decoupled from the 2.5D/3D spatial projection engine."},
     "/api/v1/graph/levels": {
         "allowed_params": {"node_ids", "scope"}, "module": "graph_layers", "subsystem": "portals",
         "description": "7-level Knowledge Graph breakdown (Project, Feature, Include/Dependency, Requirement, Test, Deployment, Contract) and selection stats."},

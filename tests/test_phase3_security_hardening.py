@@ -429,8 +429,8 @@ class OpsCryerHydrogenCastSecurityTests(unittest.TestCase):
             self.assertIn(route["execution_mode"], valid_modes)
         summary = route_registry.build_route_registry_summary()
         by_mode = summary["by_execution_mode"]
-        self.assertEqual(sum(v["html_routes"] for v in by_mode.values()), 22)
-        self.assertEqual(sum(v["api_routes"] for v in by_mode.values()), 72)
+        self.assertEqual(sum(v["html_routes"] for v in by_mode.values()), len(route_registry.HTML_PORTAL_ROUTES))
+        self.assertEqual(sum(v["api_routes"] for v in by_mode.values()), len(route_registry.API_V1_ROUTES))
 
         hub_catalog = opscryer_suite_hub.build_suite_application_catalog()
         for entry in (*hub_catalog["applications"], *hub_catalog["compatibility_and_live_extensions"]):
